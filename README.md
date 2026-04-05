@@ -1,6 +1,28 @@
-# Dashboard Om
+# Dashboard OM — Orientação e Mobilidade
 
-This is an [Observable Framework](https://observablehq.com/framework/) app. To install the required dependencies, run:
+Dashboard administrativo para o sistema de **Orientação e Mobilidade (OM)**, construído com [Observable Framework](https://observablehq.com/framework/).
+
+## Tecnologias
+
+- [Observable Framework](https://observablehq.com/framework/) — páginas Markdown + JavaScript reativo
+- JavaScript ES Modules
+- JWT via `sessionStorage` para autenticação
+- Integração com [api-om](https://github.com/Phyllipe-/api-om)
+
+## Páginas
+
+| Seção | Página | Acesso |
+|---|---|---|
+| Admin | Alunos, Cadastrar/Editar Aluno | Professor |
+| Admin | Professores, Cadastrar/Editar Professor | Administrador |
+| Admin | Mapas, Atividades, Criar Atividade | Professor |
+| Visualização | Lista de Alunos, Dados, Perfil Geral, Perfil Detalhado | Professor |
+
+## Configuração
+
+Certifique-se de que a [api-om](https://github.com/Phyllipe-/api-om) está rodando em `http://127.0.0.1:5000`.
+
+To install the required dependencies, run:
 
 ```
 npm install
