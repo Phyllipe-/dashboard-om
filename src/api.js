@@ -154,7 +154,12 @@ export function fetchSessoes(id_aluno) {
   return apiFetch(`/treinos/sessoes?id_aluno=${id_aluno}`);
 }
 
-/** GET /api/analises/sessao/:id_log — análises de uma sessão */
+/** GET /api/analises/sessao/:id_log — caminhos dos arquivos de análise */
 export function fetchAnalises(id_log) {
   return apiFetch(`/analises/sessao/${id_log}`);
+}
+
+/** GET /api/analises/sessao/:id_log/metricas — Precisão, Objetivos e Fluidez calculados */
+export function fetchMetricas(id_log) {
+  return apiFetch(`/analises/sessao/${id_log}/metricas`);
 }
