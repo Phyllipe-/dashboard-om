@@ -46,8 +46,9 @@ toc: false
   .radar-wrap svg { width:100%; height:100%; }
 
   /* ── Link para perfil ───────────────────────── */
-  .card-footer { padding:.5rem 1rem .75rem; display:flex; justify-content:flex-end; }
+  .card-footer { padding:.5rem 1rem .75rem; display:flex; justify-content:flex-end; gap:.5rem; }
   .btn-ver { font-size:.78rem; font-weight:600; padding:.28rem .75rem; border-radius:6px; background:var(--theme-foreground); color:var(--theme-background); text-decoration:none; }
+  .btn-sessao { font-size:.78rem; font-weight:600; padding:.28rem .75rem; border-radius:6px; border:1px solid var(--theme-foreground-faint); background:transparent; color:var(--theme-foreground); text-decoration:none; cursor:pointer; }
   .btn-ver:hover { opacity:.82; }
 
   /* ── Header clicável ─────────────────────────── */
@@ -136,7 +137,7 @@ toc: false
 
 ```js
 import { requireAuth, logout } from "../auth.js";
-import { fetchAlunos, fetchSessoes, fetchMetricas } from "../api.js";
+import { fetchAlunos, fetchSessoes, fetchMetricasAluno } from "../api.js";
 
 const currentUser = requireAuth();
 const headerUser   = document.getElementById("header-user");
@@ -239,20 +240,17 @@ try {
 // Buscar última sessão + análises de cada aluno em paralelo
 const alunosMeta = await Promise.all(todosAlunos.map(async a => {
   try {
-    const { sessoes } = await fetchSessoes(a.id_aluno);
-    const ultima = sessoes?.[0] ?? null;
-    let metricas = null;
-    let finalizada = null;
-    if (ultima) {
-      const resp = await fetchMetricas(ultima.id_log).catch(() => null);
-      if (resp?.metricas) {
-        metricas = resp.metricas;
-        finalizada = resp.atividade_finalizada;
-      }
-    }
-    return { ...a, ultimaSessao: ultima, metricas, finalizada };
+    const [{ sessoes }, respMetricas] = await Promise.all([
+      fetchSessoes(a.id_aluno),
+      fetchMetricasAluno(a.id_aluno).catch(() => null),
+    ]);
+    const ultima      = sessoes?.[0] ?? null;
+    const totalSessoes = sessoes?.length ?? 0;
+    const metricas    = respMetricas?.metricas ?? null;
+    const finalizada  = respMetricas?.atividade_finalizada ?? null;
+    return { ...a, ultimaSessao: ultima, totalSessoes, metricas, finalizada };
   } catch {
-    return { ...a, ultimaSessao: null, metricas: null, finalizada: null };
+    return { ...a, ultimaSessao: null, totalSessoes: 0, metricas: null, finalizada: null };
   }
 }));
 
@@ -306,7 +304,7 @@ function abrirModal(a) {
       <div class="modal-badges">
         <span class="modal-badge-label">Última sessão:</span>
         <span style="font-size:.82rem">Mapa: <strong>${sessao?.nome_mapa ?? "—"}</strong></span>
-        <span style="font-size:.82rem">Sessão: <strong>#${sessao?.id_log ?? "—"}</strong></span>
+        <span style="font-size:.82rem">Sessões jogadas: <strong>${a.totalSessoes}</strong></span>
         ${badgeFin}
         ${media !== null ? `<span style="margin-left:auto;font-size:.82rem;color:${cor.stroke};font-weight:700">Média: ${media}%</span>` : ""}
       </div>
@@ -402,8 +400,8 @@ function renderGrid() {
         <div class="card-info">
           <div class="card-name">${a.nome_completo}</div>
           <div class="card-meta">
-            <span>Mapa: ${sessao?.nome_mapa ?? "—"}</span>
-            <span>Sessão: ${sessao?.id_log ?? "—"}</span>
+            <span>Último mapa: ${sessao?.nome_mapa ?? "—"}</span>
+            <span>Sessões jogadas: ${a.totalSessoes}</span>
           </div>
           ${badgeHTML}
         </div>
@@ -427,7 +425,12 @@ function renderGrid() {
     // Footer
     const footer = document.createElement("div");
     footer.className = "card-footer";
-    footer.innerHTML = `<a class="btn-ver" href="/visualizacao/perfil-aluno?id=${a.id_aluno}">Ver perfil →</a>`;
+    const sessaoHref = a.totalSessoes > 0
+      ? `/visualizacao/sessoes?aluno=${a.id_aluno}`
+      : null;
+    footer.innerHTML = `
+      ${sessaoHref ? `<a class="btn-sessao" href="${sessaoHref}">Ver sessões (${a.totalSessoes})</a>` : `<span class="btn-sessao" style="opacity:.4;cursor:default">Sem sessões</span>`}
+      <a class="btn-ver" href="/visualizacao/perfil-aluno?id=${a.id_aluno}">Ver perfil →</a>`;
 
     card.append(header, radarWrap, footer);
     grid.append(card);
