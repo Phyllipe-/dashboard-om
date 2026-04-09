@@ -215,6 +215,9 @@ import { requireAuth, logout } from "../auth.js";
 import { fetchAlunos, fetchAluno, fetchSessoes, fetchSessao, fetchAnalises, fetchMetricas } from "../api.js";
 import * as Plot from "npm:@observablehq/plot";
 import { detectarGiros } from "../lib/sessao/giros.js";
+import { contarMovimentos, heatTilesParaRects, corHeatmap, PALETA_HEATMAP } from "../lib/sessao/heatmap.js";
+import { extrairSegmentos, extrairColisoes, corSegmento, raioColisao } from "../lib/sessao/colisao.js";
+import { extrairLateralidade, corpoSVGElement, COR_DIREITA as LAT_COR_DIR, COR_ESQUERDA as LAT_COR_ESQ } from "../lib/sessao/lateralidade.js";
 import { parseMapaXML } from "../lib/mapa/parser.js";
 import { mapaParaGeoJSON } from "../lib/mapa/geojson.js";
 
@@ -270,9 +273,11 @@ const chkObjetivos= html`<input type="checkbox">`;
 const chkObjetos  = html`<input type="checkbox" checked>`;  // interactive_elements
 const chkMoveis   = html`<input type="checkbox" checked>`;  // furniture/eletronics/utensils
 
-// Re-renderiza o mapa quando qualquer checkbox de camada mudar
+// Re-renderiza os mapas quando qualquer checkbox de camada mudar
 [chkObjetos, chkMoveis].forEach(c => c.addEventListener("change", () => {
   if (giroState.camadas) renderizarMapaGiros();
+  if (giroState.camadas) renderizarHeatmap();
+  if (giroState.camadas) renderizarColisao();
 }));
 
 const selSessao1  = document.createElement("select"); selSessao1.className = "filtro-sessao select";
@@ -392,8 +397,12 @@ function aplicarFiltroSessoes() {
   if (target?.sessao?.id_log) {
     carregarMapaGiros(target.sessao.id_log);
   } else {
-    giroState.camadas = null;
+    giroState.camadas  = null;
+    giroState.dadosLog = null;
     renderizarMapaGiros();
+    renderizarHeatmap();
+    renderizarColisao();
+    renderizarLateralidade();
   }
 }
 
@@ -401,6 +410,7 @@ function aplicarFiltroSessoes() {
 let giroState = {
   giros:        [],
   objetivos:    [],   // [{ objectiveName, objectiveID, endTime }] da sessão
+  dadosLog:     null, // dados_log completo para heatmap
   camadas:      null,
   cols:         0,
   rows:         0,
@@ -451,7 +461,8 @@ gBtnDireita.addEventListener("click",  () => setGiroFiltroDirecao("direita"));
 gBtnEsquerda.addEventListener("click", () => setGiroFiltroDirecao("esquerda"));
 
 /** Renderiza o mapa base + marcadores de giro com legenda interativa. */
-function renderizarMapaGiros() {
+function renderizarMapaGiros() { try { _renderizarMapaGiros(); } catch(e) { console.error("renderizarMapaGiros:", e); } }
+function _renderizarMapaGiros() {
   const { camadas, cols, rows, giros, filtroDirecao, filtroGraus } = giroState;
   mapaGirosContainer.replaceChildren();
 
@@ -506,8 +517,10 @@ function renderizarMapaGiros() {
     if (!giroMap.has(key)) giroMap.set(key, []);
     giroMap.get(key).push(g);
   }
+  // geoY de detectarGiros usa -(round(z)+0.5); corrigir para o eixo Z invertido do Unity
   const giroPoints = [...giroMap.values()].map(arr => ({
     ...arr[0],
+    geoY: -arr[0].geoY - rows,  // round(z)+0.5 - rows
     count: arr.length,
     marcador: arr.reduce((p, c) => parseInt(c.graus) > parseInt(p.graus) ? c : p).marcador,
     tooltip: arr.map(g => `${g.marcador} ${g.graus}° ${g.direcaoLabel}`).join("\n"),
@@ -761,6 +774,452 @@ function renderizarMapaGiros() {
   mapaGirosContainer.append(wrapper);
 }
 
+// ── Heatmap de Movimentação ────────────────────────────────────────────────
+function renderizarHeatmap() { try { _renderizarHeatmap(); } catch(e) { console.error("renderizarHeatmap:", e); } }
+function _renderizarHeatmap() {
+  heatmapContainer.replaceChildren();
+
+  const { camadas, cols, rows, dadosLog } = giroState;
+
+  if (!camadas || cols === 0 || !dadosLog) {
+    const hint = document.createElement("div");
+    hint.className = "giro-hint";
+    hint.textContent = "Selecione uma sessão para ver o heatmap de movimentação.";
+    heatmapContainer.append(hint);
+    return;
+  }
+
+  // ── Coletar e converter posições ─────────────────────────────────────────
+  const contagem = contarMovimentos(dadosLog);
+
+  if (contagem.size === 0) {
+    const hint = document.createElement("div");
+    hint.className = "giro-hint";
+    hint.textContent = "Nenhum dado de movimentação disponível.";
+    heatmapContainer.append(hint);
+    return;
+  }
+
+  const heatTiles = heatTilesParaRects(contagem, rows);
+
+  // ── Camadas base ──────────────────────────────────────────────────────────
+  const getCamada = name => camadas.find(c => c.layerName === name);
+  const polyToRect = f => {
+    const c = f.geometry.coordinates[0];
+    return { x1: c[0][0], y1: c[2][1], x2: c[2][0], y2: c[0][1], ...f.properties };
+  };
+  const floorRects = (getCamada("floor")?.geojson.features ?? []).map(polyToRect);
+  const doorRects  = (getCamada("door_and_windows")?.geojson.features ?? []).map(polyToRect);
+  const wallFeature = getCamada("walls")?.geojson.features[0];
+  const wallEdges = (wallFeature?.geometry.coordinates ?? []).map(([p1, p2]) => ({
+    x1: p1[0], y1: p1[1], x2: p2[0], y2: p2[1],
+  }));
+
+  // interactive_elements numerados (responde ao chkObjetos)
+  const mostrarObjetos = chkObjetos.checked;
+  const allInterFeatures = getCamada("interactive_elements")?.geojson.features ?? [];
+  const interRects = mostrarObjetos
+    ? allInterFeatures.map((f, i) => {
+        const r = polyToRect(f);
+        return { ...r, cx: (r.x1 + r.x2) / 2, cy: (r.y1 + r.y2) / 2, idx: i + 1 };
+      })
+    : [];
+
+  // ── Dimensões ─────────────────────────────────────────────────────────────
+  const LEGENDA_W = 80; // largura reservada para a legenda lateral
+  const W = (heatmapContainer.getBoundingClientRect().width || 500) - LEGENDA_W - 16;
+  const scale = Math.min((W - 8) / cols, 480 / rows);
+  const W2 = Math.round(cols * scale);
+  const H2 = Math.round(rows * scale);
+
+  // ── Plot ─────────────────────────────────────────────────────────────────
+  const chart = Plot.plot({
+    width: W2, height: H2,
+    marginTop: 0, marginRight: 0, marginBottom: 0, marginLeft: 0,
+    x: { domain: [0, cols], axis: null },
+    y: { domain: [-rows, 0], axis: null },
+    style: { background: "transparent", overflow: "visible" },
+    marks: [
+      Plot.rect(floorRects, {
+        x1: "x1", y1: "y1", x2: "x2", y2: "y2",
+        fill: d => d.areaInterna ? "#e8d5b7" : "#c8e6c9", stroke: "none",
+      }),
+      Plot.rect(doorRects, {
+        x1: "x1", y1: "y1", x2: "x2", y2: "y2",
+        fill: "#87ceeb", fillOpacity: 0.8, stroke: "none",
+      }),
+      // Tiles de calor — azuis com transparência (mapa visível por baixo)
+      Plot.rect(heatTiles, {
+        x1: "x1", y1: "y1", x2: "x2", y2: "y2",
+        fill: d => corHeatmap(d.count),
+        stroke: "none",
+        title: d => `${d.count} ação${d.count > 1 ? "ões" : ""}`,
+      }),
+      Plot.link(wallEdges, {
+        x1: "x1", y1: "y1", x2: "x2", y2: "y2",
+        stroke: "#3a3a3a", strokeWidth: Math.max(1, scale * 0.07),
+      }),
+      // Objetivos da cena: contorno + número
+      ...interRects.length ? [
+        Plot.rect(interRects, {
+          x1: "x1", y1: "y1", x2: "x2", y2: "y2",
+          fill: "#5ba85b", fillOpacity: 0.20,
+          stroke: "#5ba85b", strokeWidth: 1.2,
+        }),
+        Plot.text(interRects, {
+          x: "cx", y: "cy",
+          text: d => String(d.idx),
+          fontSize: Math.max(7, scale * 0.5),
+          fill: "#2d6a2d", fontWeight: "bold",
+          textAnchor: "middle", dy: "0.35em",
+          title: "nomeAmigavel",
+        }),
+      ] : [],
+    ],
+  });
+
+  // ── Legenda lateral ───────────────────────────────────────────────────────
+  const legenda = document.createElement("div");
+  legenda.style.cssText = `
+    flex-shrink:0;width:${LEGENDA_W}px;
+    display:flex;flex-direction:column;align-items:center;gap:0;
+    background:var(--theme-background-alt);
+    border:1px solid var(--theme-foreground-faintest);
+    border-radius:8px;padding:8px 6px 6px;`;
+
+  const titulo = document.createElement("div");
+  titulo.style.cssText = "font-size:.65rem;font-weight:700;text-align:center;line-height:1.2;margin-bottom:4px;color:var(--theme-foreground);";
+  titulo.textContent = "Ações por Área";
+  legenda.append(titulo);
+
+  const subtitulo = document.createElement("div");
+  subtitulo.style.cssText = "font-size:.6rem;text-align:center;color:var(--theme-foreground-muted);margin-bottom:6px;";
+  subtitulo.textContent = "Legenda de Cores";
+  legenda.append(subtitulo);
+
+  // Swatches (ordem reversa: 5+ em cima, 1 em baixo — mais escuro → mais claro)
+  const swatchesWrap = document.createElement("div");
+  swatchesWrap.style.cssText = "display:flex;gap:4px;align-items:stretch;";
+
+  const swatchCol = document.createElement("div");
+  swatchCol.style.cssText = "display:flex;flex-direction:column;gap:2px;";
+
+  const labelCol = document.createElement("div");
+  labelCol.style.cssText = "display:flex;flex-direction:column;gap:2px;justify-content:space-around;";
+
+  for (const entry of [...PALETA_HEATMAP].reverse()) {
+    const swatch = document.createElement("div");
+    swatch.style.cssText = `width:22px;height:16px;border-radius:3px;background:${entry.cor};border:1px solid rgba(0,0,0,.1);`;
+    swatchCol.append(swatch);
+
+    const lbl = document.createElement("div");
+    lbl.style.cssText = "font-size:.65rem;color:var(--theme-foreground-muted);line-height:16px;";
+    lbl.textContent = entry.label;
+    labelCol.append(lbl);
+  }
+  swatchesWrap.append(swatchCol, labelCol);
+  legenda.append(swatchesWrap);
+
+  // Label rotacionado "N° de Ações"
+  const rotLabel = document.createElement("div");
+  rotLabel.style.cssText = `
+    writing-mode:vertical-rl;transform:rotate(180deg);
+    font-size:.6rem;color:var(--theme-foreground-muted);
+    margin-top:6px;letter-spacing:.03em;`;
+  rotLabel.textContent = "N° de Ações";
+  legenda.append(rotLabel);
+
+  // ── Legenda de objetivos ──────────────────────────────────────────────────
+  const legendObjetivos = document.createElement("div");
+  legendObjetivos.style.cssText = `
+    flex-shrink:0;
+    background:var(--theme-background-alt);
+    border:1px solid var(--theme-foreground-faintest);
+    border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:4px;`;
+
+  const lblObj = document.createElement("div");
+  lblObj.style.cssText = "font-size:.65rem;font-weight:700;color:var(--theme-foreground-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px;";
+  lblObj.textContent = "Objetivos da cena";
+  legendObjetivos.append(lblObj);
+
+  const objData = allInterFeatures.map((f, i) => {
+    const logObj = giroState.objetivos[i];
+    const nome = logObj?.objectiveName ?? f.properties.nomeAmigavel ?? `Objetivo ${i + 1}`;
+    return { idx: i + 1, nome };
+  });
+
+  if (objData.length === 0) {
+    const vazio = document.createElement("span");
+    vazio.style.cssText = "font-size:.72rem;color:var(--theme-foreground-muted);font-style:italic;";
+    vazio.textContent = "Nenhum objetivo no mapa";
+    legendObjetivos.append(vazio);
+  } else {
+    for (const obj of objData) {
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex;align-items:center;gap:6px;";
+
+      const badge = document.createElement("div");
+      badge.style.cssText = `width:18px;height:18px;border-radius:4px;flex-shrink:0;
+        background:rgba(91,168,91,.25);border:1.5px solid #5ba85b;
+        display:flex;align-items:center;justify-content:center;`;
+      const num = document.createElement("span");
+      num.style.cssText = "font-size:.68rem;font-weight:800;color:#2d6a2d;line-height:1;";
+      num.textContent = obj.idx;
+      badge.append(num);
+
+      const nomeEl = document.createElement("span");
+      nomeEl.style.cssText = "font-size:.72rem;color:var(--theme-foreground);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:130px;";
+      nomeEl.textContent = obj.nome;
+      nomeEl.title = obj.nome;
+
+      row.append(badge, nomeEl);
+      legendObjetivos.append(row);
+    }
+  }
+
+  // Coluna lateral: cor em cima, objetivos em baixo
+  const sideCol = document.createElement("div");
+  sideCol.style.cssText = "display:flex;flex-direction:column;gap:8px;flex-shrink:0;";
+  sideCol.append(legenda, legendObjetivos);
+
+  // ── Wrapper mapa + legenda ────────────────────────────────────────────────
+  const wrapper = document.createElement("div");
+  wrapper.style.cssText = "display:flex;align-items:flex-start;gap:8px;";
+  wrapper.append(chart, sideCol);
+  heatmapContainer.append(wrapper);
+}
+
+// ── Mapa de Colisão — checkboxes internos ─────────────────────────────────
+const chkColisaoPoints  = Object.assign(document.createElement("input"),  { type: "checkbox" }); chkColisaoPoints.checked  = true;
+const chkObjetivosCol   = Object.assign(document.createElement("input"),  { type: "checkbox" }); chkObjetivosCol.checked   = true;
+[chkColisaoPoints, chkObjetivosCol].forEach(c => c.addEventListener("change", () => {
+  if (giroState.camadas) renderizarColisao();
+}));
+
+function renderizarColisao() { try { _renderizarColisao(); } catch(e) { console.error("renderizarColisao:", e); } }
+function _renderizarColisao() {
+  colisaoContainer.replaceChildren();
+
+  // ── Barra de checkboxes ───────────────────────────────────────────────────
+  const chkBar = document.createElement("div");
+  chkBar.style.cssText = "display:flex;gap:16px;margin-bottom:8px;font-size:.75rem;color:var(--theme-foreground-muted);user-select:none;";
+
+  const mkChkLabel = (chk, text) => {
+    const lbl = document.createElement("label");
+    lbl.style.cssText = "display:flex;align-items:center;gap:5px;cursor:pointer;";
+    lbl.append(chk, text);
+    return lbl;
+  };
+  chkBar.append(
+    mkChkLabel(chkColisaoPoints, "Pontos de Colisão"),
+    mkChkLabel(chkObjetivosCol,  "Pontos de Objetivos"),
+  );
+  colisaoContainer.append(chkBar);
+
+  const { camadas, cols, rows, dadosLog } = giroState;
+
+  if (!camadas || cols === 0 || !dadosLog) {
+    const hint = document.createElement("div");
+    hint.className = "giro-hint";
+    hint.textContent = "Selecione uma sessão para ver o mapa de colisões.";
+    colisaoContainer.append(hint);
+    return;
+  }
+
+  // ── Dados ─────────────────────────────────────────────────────────────────
+  const segmentos  = extrairSegmentos(dadosLog, rows);
+  const colisoes   = extrairColisoes(dadosLog, rows);
+  const maxSeg     = segmentos.length ? Math.max(...segmentos.map(s => s.count)) : 1;
+
+  // Pontos visitados para dots azuis nos nós da trajetória
+  const visitContagem = contarMovimentos(dadosLog);
+  const visitPoints   = [...visitContagem.entries()].map(([key]) => {
+    const [col, row] = key.split(",").map(Number);
+    // mesma inversão de eixo Z: geoY = round(z) + 0.5 - rows = row + 0.5 - rows
+    return { geoX: col + 0.5, geoY: row + 0.5 - rows };
+  });
+
+  // ── Camadas base ──────────────────────────────────────────────────────────
+  const getCamada = name => camadas.find(c => c.layerName === name);
+  const polyToRect = f => {
+    const c = f.geometry.coordinates[0];
+    return { x1: c[0][0], y1: c[2][1], x2: c[2][0], y2: c[0][1], ...f.properties };
+  };
+  const floorRects  = (getCamada("floor")?.geojson.features ?? []).map(polyToRect);
+  const doorRects   = (getCamada("door_and_windows")?.geojson.features ?? []).map(polyToRect);
+  const wallFeature = getCamada("walls")?.geojson.features[0];
+  const wallEdges   = (wallFeature?.geometry.coordinates ?? []).map(([p1, p2]) => ({
+    x1: p1[0], y1: p1[1], x2: p2[0], y2: p2[1],
+  }));
+
+  const allInterFeatures = getCamada("interactive_elements")?.geojson.features ?? [];
+  const interCenters = chkObjetivosCol.checked
+    ? allInterFeatures.map((f, i) => {
+        const r = polyToRect(f);
+        return { cx: (r.x1 + r.x2) / 2, cy: (r.y1 + r.y2) / 2, idx: i + 1, ...f.properties };
+      })
+    : [];
+
+  // ── Dimensões ─────────────────────────────────────────────────────────────
+  const LEGENDA_W = 140;
+  const W     = (colisaoContainer.getBoundingClientRect().width || 500) - LEGENDA_W - 16;
+  const scale = Math.min((W - 8) / cols, 480 / rows);
+  const W2    = Math.round(cols * scale);
+  const H2    = Math.round(rows * scale);
+  const dotR  = 2;  // raio dos nós da trajetória (diâmetro 4px fixo)
+  const colR  = Math.max(3,   scale * 0.12);  // raio fixo dos círculos de colisão
+
+  // ── Plot ─────────────────────────────────────────────────────────────────
+  const chart = Plot.plot({
+    width: W2, height: H2,
+    marginTop: 0, marginRight: 0, marginBottom: 0, marginLeft: 0,
+    x: { domain: [0, cols], axis: null },
+    y: { domain: [-rows, 0], axis: null },
+    style: { background: "transparent", overflow: "visible" },
+    marks: [
+      // Mapa base
+      Plot.rect(floorRects, {
+        x1: "x1", y1: "y1", x2: "x2", y2: "y2",
+        fill: d => d.areaInterna ? "#e8d5b7" : "#c8e6c9", stroke: "none",
+      }),
+      Plot.rect(doorRects, {
+        x1: "x1", y1: "y1", x2: "x2", y2: "y2",
+        fill: "#87ceeb", fillOpacity: 0.8, stroke: "none",
+      }),
+      // Trajetórias ortogonais
+      ...segmentos.length ? [Plot.link(segmentos, {
+        x1: "x1", y1: "y1", x2: "x2", y2: "y2",
+        stroke:      d => corSegmento(d.count, maxSeg),
+        strokeWidth: 12,
+        strokeLinecap: "round",
+        title: d => `${d.count} travessia${d.count > 1 ? "s" : ""}`,
+      })] : [],
+      // Nós: ponto azul preenchido em cada tile visitado
+      Plot.dot(visitPoints, {
+        x: "geoX", y: "geoY",
+        r: dotR,
+        fill: "#4a90d9",
+        stroke: "#1a5fa8",
+        strokeWidth: 1,
+      }),
+      // Paredes (sobre tudo exceto colisões e objetivos)
+      Plot.link(wallEdges, {
+        x1: "x1", y1: "y1", x2: "x2", y2: "y2",
+        stroke: "#3a3a3a", strokeWidth: Math.max(1.5, scale * 0.07),
+      }),
+      // Objetivos: círculo branco com contorno verde nos centros
+      ...interCenters.length ? [
+        Plot.dot(interCenters, {
+          x: "cx", y: "cy",
+          r: dotR * 1.4,
+          fill: "white",
+          stroke: "#5ba85b",
+          strokeWidth: 1.5,
+        }),
+        Plot.text(interCenters, {
+          x: "cx", y: "cy",
+          text: d => String(d.idx),
+          fontSize: Math.max(6, scale * 0.4),
+          fill: "#2d6a2d", fontWeight: "bold",
+          textAnchor: "middle", dy: "0.35em",
+        }),
+      ] : [],
+      // Colisões: círculo vermelho — sem fill, contorno (posição real do log)
+      ...chkColisaoPoints.checked && colisoes.length ? [Plot.dot(colisoes, {
+        x: "geoX", y: "geoY",
+        r: colR,
+        fill: "none",
+        stroke: "rgba(200,20,20,0.90)",
+        strokeWidth: 1.8,
+        title: d => `${d.count} colisão${d.count > 1 ? "ões" : ""} — ${d.objectID}`,
+      })] : [],
+    ],
+  });
+
+  // ── Legenda lateral ───────────────────────────────────────────────────────
+  const legenda = document.createElement("div");
+  legenda.style.cssText = `
+    flex-shrink:0;width:${LEGENDA_W}px;display:flex;flex-direction:column;gap:10px;
+    background:var(--theme-background-alt);
+    border:1px solid var(--theme-foreground-faintest);
+    border-radius:8px;padding:10px 10px 8px;`;
+
+  // — Trajetória —
+  const mkSec = label => {
+    const sec = document.createElement("div");
+    sec.style.cssText = "display:flex;flex-direction:column;gap:5px;";
+    const lbl = document.createElement("div");
+    lbl.style.cssText = "font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--theme-foreground-muted);margin-bottom:2px;";
+    lbl.textContent = label;
+    sec.append(lbl);
+    return sec;
+  };
+
+  const secTraj = mkSec("Trajetória");
+  for (const { label, t } of [{ label: "Pouco", t: 0 }, { label: "Moderado", t: 0.5 }, { label: "Frequente", t: 1 }]) {
+    const cor = corSegmento(Math.round(1 + t * (maxSeg - 1)), maxSeg);
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;align-items:center;gap:6px;";
+    const linha = document.createElement("div");
+    linha.style.cssText = `width:28px;height:4px;border-radius:2px;background:${cor};flex-shrink:0;`;
+    const lbl = document.createElement("span");
+    lbl.style.cssText = "font-size:.68rem;color:var(--theme-foreground-muted);";
+    lbl.textContent = label;
+    row.append(linha, lbl);
+    secTraj.append(row);
+  }
+  legenda.append(secTraj);
+
+  // — Colisões —
+  const secCol = mkSec("Colisões");
+  for (const { label, d } of [{ label: "1", d: 8 }, { label: "2–3", d: 12 }, { label: "4+", d: 18 }]) {
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;align-items:center;gap:6px;";
+    const circ = document.createElement("div");
+    circ.style.cssText = `width:${d}px;height:${d}px;border-radius:50%;background:none;border:1.8px solid rgba(200,20,20,0.90);flex-shrink:0;`;
+    const lbl = document.createElement("span");
+    lbl.style.cssText = "font-size:.68rem;color:var(--theme-foreground-muted);";
+    lbl.textContent = label;
+    row.append(circ, lbl);
+    secCol.append(row);
+  }
+  legenda.append(secCol);
+
+  // — Objetivos —
+  if (chkObjetivosCol.checked && allInterFeatures.length > 0) {
+    const secObj = mkSec("Objetivos");
+    secObj.style.borderTop = "1px solid var(--theme-foreground-faintest)";
+    secObj.style.paddingTop = "8px";
+    allInterFeatures.forEach((f, i) => {
+      const logObj = giroState.objetivos[i];
+      const nome = logObj?.objectiveName ?? f.properties.nomeAmigavel ?? `Objetivo ${i + 1}`;
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex;align-items:center;gap:5px;";
+      const badge = document.createElement("div");
+      badge.style.cssText = `width:16px;height:16px;border-radius:50%;flex-shrink:0;
+        background:white;border:1.5px solid #5ba85b;
+        display:flex;align-items:center;justify-content:center;`;
+      const num = document.createElement("span");
+      num.style.cssText = "font-size:.6rem;font-weight:800;color:#2d6a2d;line-height:1;";
+      num.textContent = i + 1;
+      badge.append(num);
+      const nomeEl = document.createElement("span");
+      nomeEl.style.cssText = "font-size:.68rem;color:var(--theme-foreground);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:88px;";
+      nomeEl.textContent = nome;
+      nomeEl.title = nome;
+      row.append(badge, nomeEl);
+      secObj.append(row);
+    });
+    legenda.append(secObj);
+  }
+
+  // ── Wrapper ───────────────────────────────────────────────────────────────
+  const wrapper = document.createElement("div");
+  wrapper.style.cssText = "display:flex;align-items:flex-start;gap:8px;";
+  wrapper.append(chart, legenda);
+  colisaoContainer.append(wrapper);
+}
+
 // Cache de camadas por id_mapa para não reprocessar o mesmo XML
 const xmlMapaCache = new Map();
 
@@ -777,6 +1236,7 @@ async function carregarMapaGiros(id_log) {
     if (myVersion !== giroVersion) return;
 
     // 2. Detectar giros
+    giroState.dadosLog  = sessao.dados_log ?? null;
     giroState.giros     = sessao.dados_log ? detectarGiros(sessao.dados_log) : [];
     giroState.objetivos = sessao.dados_log?.objectives ?? [];
 
@@ -818,6 +1278,9 @@ async function carregarMapaGiros(id_log) {
     }
 
     renderizarMapaGiros();
+    renderizarHeatmap();
+    renderizarColisao();
+    renderizarLateralidade();
   } catch (e) {
     if (myVersion !== giroVersion) return;
     giroHint.textContent = `Erro ao carregar: ${e.message}`;
@@ -834,8 +1297,144 @@ function ph(classe, icon, label) {
 }
 
 const phTrafego        = ph("ph-trafego",       "🗺️",  "Mapa de Tráfego e Giros");
-const phHeatmap        = ph("ph-heatmap",       "🔥",  "Heatmap de Eventos");
-const phLateralidade   = ph("ph-lateralidade",  "↔️",  "Mapa da Lateralidade");
+const heatmapContainer = document.createElement("div");
+heatmapContainer.style.cssText = "min-height:180px";
+const colisaoContainer = document.createElement("div");
+colisaoContainer.style.cssText = "min-height:180px";
+// ── Mapa de Lateralidade ──────────────────────────────────────────────────
+function renderizarLateralidade() { try { _renderizarLateralidade(); } catch(e) { console.error("renderizarLateralidade:", e); } }
+function _renderizarLateralidade() {
+  lateralidadeContainer.replaceChildren();
+
+  const { dadosLog } = giroState;
+  if (!dadosLog) {
+    const hint = document.createElement("div");
+    hint.className = "giro-hint";
+    hint.textContent = "Selecione uma sessão para ver a lateralidade.";
+    lateralidadeContainer.append(hint);
+    return;
+  }
+
+  const lat = extrairLateralidade(dadosLog);
+
+  // ── Barra de proporção ────────────────────────────────────────────────────
+  const barWrap = document.createElement("div");
+  barWrap.style.cssText = "margin-bottom:10px;";
+
+  const barTitle = document.createElement("div");
+  barTitle.style.cssText = "font-size:.7rem;text-align:center;color:var(--theme-foreground-muted);margin-bottom:4px;";
+  barTitle.textContent = "Proporção de Ações (Direita vs. Esquerda)";
+
+  // Wrapper relativo para posicionar o marcador de 50%
+  const barOuter = document.createElement("div");
+  barOuter.style.cssText = "position:relative;";
+
+  const bar = document.createElement("div");
+  bar.style.cssText = "display:flex;height:14px;border-radius:3px;overflow:hidden;";
+  const segDir = document.createElement("div");
+  segDir.style.cssText = `flex:${lat.pctDireita};background:${LAT_COR_DIR};`;
+  const segEsq = document.createElement("div");
+  segEsq.style.cssText = `flex:${lat.pctEsquerda};background:${LAT_COR_ESQ};`;
+  bar.append(segDir, segEsq);
+
+  // Marcador de 50%
+  const marca50 = document.createElement("div");
+  marca50.style.cssText = `
+    position:absolute;left:50%;top:-4px;bottom:-4px;
+    width:2px;margin-left:-1px;
+    background:#333;opacity:0.7;pointer-events:none;`;
+  const marca50Lbl = document.createElement("div");
+  marca50Lbl.style.cssText = `
+    position:absolute;left:50%;top:-16px;
+    transform:translateX(-50%);
+    font-size:.58rem;font-weight:700;color:#333;white-space:nowrap;`;
+  marca50Lbl.textContent = "50%";
+  barOuter.append(bar, marca50, marca50Lbl);
+
+  // Escala de % abaixo da barra
+  const barScale = document.createElement("div");
+  barScale.style.cssText = "display:flex;justify-content:space-between;font-size:.6rem;color:var(--theme-foreground-muted);margin-top:6px;";
+  for (let p = 0; p <= 100; p += 10) {
+    const s = document.createElement("span"); s.textContent = p + "%";
+    barScale.append(s);
+  }
+  const barSubLabel = document.createElement("div");
+  barSubLabel.style.cssText = "font-size:.65rem;text-align:center;color:var(--theme-foreground-muted);margin-top:1px;";
+  barSubLabel.textContent = "Proporção de Ações";
+
+  barWrap.append(barTitle, barOuter, barScale, barSubLabel);
+
+  // ── Silhueta + gráfico lado a lado ───────────────────────────────────────
+  const row = document.createElement("div");
+  row.style.cssText = "display:flex;align-items:flex-start;gap:16px;";
+
+  // Silhueta com labels DIREITA / ESQUERDA
+  const figWrap = document.createElement("div");
+  figWrap.style.cssText = "flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:4px;";
+
+  const lblRow = document.createElement("div");
+  lblRow.style.cssText = "display:flex;width:220px;justify-content:space-between;";
+  const mkLbl = (txt, cor) => {
+    const s = document.createElement("span");
+    s.style.cssText = `font-size:.75rem;font-weight:bold;color:${cor};`;
+    s.textContent = txt;
+    return s;
+  };
+  lblRow.append(mkLbl("DIREITA", LAT_COR_DIR), mkLbl("ESQUERDA", LAT_COR_ESQ));
+
+  const svgEl = corpoSVGElement(lat);
+  svgEl.style.width = "220px";
+
+  const pctRow = document.createElement("div");
+  pctRow.style.cssText = "display:flex;width:220px;justify-content:space-between;";
+  const mkPct = (v, cor) => {
+    const s = document.createElement("span");
+    s.style.cssText = `font-size:.8rem;font-weight:bold;color:${cor};`;
+    s.textContent = (v * 100).toFixed(2) + "%";
+    return s;
+  };
+  pctRow.append(mkPct(lat.pctDireita, LAT_COR_DIR), mkPct(lat.pctEsquerda, LAT_COR_ESQ));
+
+  figWrap.append(lblRow, svgEl, pctRow);
+
+  // Gráfico de barras
+  const chartWrap = document.createElement("div");
+  chartWrap.style.cssText = "flex:1;min-width:0;";
+
+  const barData = [
+    { lado: "Direita",  n: lat.direita  },
+    { lado: "Esquerda", n: lat.esquerda },
+  ];
+  const chartW = Math.max(140, (lateralidadeContainer.getBoundingClientRect().width || 420) - 256);
+  const barChart = Plot.plot({
+    width: chartW,
+    height: 360,
+    marginBottom: 55,
+    marginLeft: 55,
+    x: { label: "Lateralidade", tickRotate: -30 },
+    y: { label: "Número de Ações", grid: true },
+    marks: [
+      Plot.barY(barData, {
+        x: "lado", y: "n",
+        fill: d => d.lado === "Direita" ? LAT_COR_DIR : LAT_COR_ESQ,
+      }),
+      Plot.ruleY([0]),
+      Plot.text(barData, {
+        x: "lado", y: "n",
+        text: d => d.n.toLocaleString("pt-BR"),
+        dy: -6, fontSize: 11, fontWeight: "bold",
+        fill: "var(--theme-foreground)",
+      }),
+    ],
+  });
+  chartWrap.append(barChart);
+
+  row.append(figWrap, chartWrap);
+  lateralidadeContainer.append(barWrap, row);
+}
+
+const lateralidadeContainer = document.createElement("div");
+lateralidadeContainer.style.cssText = "min-height:260px";
 const phComportamental = ph("ph-comportamental","📈",  "Análise Comportamental");
 const phRadar          = ph("ph-radar",         "🕸️",  "Radar de Métricas");
 
@@ -846,43 +1445,67 @@ evolucaoContainer.style.cssText = "min-height:180px";
 function renderizarGrafico(filtradas) {
   evolucaoContainer.replaceChildren();
 
-  const rows = filtradas
-    .filter(a => a.metricas)
-    .map((a, i) => ({
-      sessao: `#${a.sessao.id_log} ${a.sessao.nome_mapa?.slice(0, 16) ?? ""}`,
-      idx: i + 1,
-      data: a.sessao.data?.slice(0, 10) ?? `S${i + 1}`,
-    }))
-    .flatMap(r => {
-      const m = filtradas.find(a => `#${a.sessao.id_log} ${a.sessao.nome_mapa?.slice(0, 16) ?? ""}` === r.sessao)?.metricas;
-      if (!m) return [];
-      return [
-        { ...r, metrica: "Precisão",  valor: m.precisao  },
-        { ...r, metrica: "Objetivos", valor: m.objetivos },
-        { ...r, metrica: "Fluidez",   valor: m.fluidez   },
-      ];
-    });
+  // Ordem cronológica: API retorna mais recente primeiro, invertemos
+  const comMetricas = [...filtradas].reverse().filter(a => a.metricas);
 
-  if (!rows.length) {
+  if (!comMetricas.length) {
     evolucaoContainer.append(ph("ph-evolucao", "📉", "Evolução por Sessão"));
     return;
   }
 
-  const COR = { "Precisão": "#4a90e2", "Objetivos": "#5ba85b", "Fluidez": "#e07b54" };
-  const chart = Plot.plot({
-    width: evolucaoContainer.clientWidth || 320,
-    height: 180,
-    marginLeft: 36, marginRight: 8, marginBottom: 48, marginTop: 12,
-    x: { label: null, tickRotate: -35 },
-    y: { label: "%", domain: [0, 100], grid: true, ticks: 5 },
-    color: { legend: true, range: Object.values(COR) },
-    marks: [
-      Plot.line(rows, { x: "data", y: "valor", stroke: "metrica", strokeWidth: 2,
-        tip: true }),
-      Plot.dot(rows, { x: "data", y: "valor", fill: "metrica", r: 3.5 }),
-    ],
+  // Eixo X = "#id_log" — único por sessão, independente de data
+  const grafRows = comMetricas.flatMap(a => {
+    const label = `#${a.sessao.id_log}`;
+    const m = a.metricas;
+    return [
+      { label, metrica: "Precisão",  valor: m.precisao  },
+      { label, metrica: "Objetivos", valor: m.objetivos },
+      { label, metrica: "Fluidez",   valor: m.fluidez   },
+    ];
   });
-  evolucaoContainer.append(chart);
+
+  const labelsDomain = comMetricas.map(a => `#${a.sessao.id_log}`);
+  const COR_RANGE = ["#4a90e2", "#5ba85b", "#e07b54"];
+
+  try {
+    const w = evolucaoContainer.getBoundingClientRect().width || evolucaoContainer.offsetWidth || 400;
+    const chart = Plot.plot({
+      width: Math.max(w, 240),
+      height: 180,
+      marginLeft: 36, marginRight: 8, marginBottom: 40, marginTop: 12,
+      x: {
+        label: null,
+        domain: labelsDomain,
+        tickRotate: labelsDomain.length > 5 ? -40 : 0,
+      },
+      y: { label: "%", domain: [0, 100], grid: true, ticks: 5 },
+      color: {
+        domain: ["Precisão", "Objetivos", "Fluidez"],
+        range: COR_RANGE,
+      },
+      marks: [
+        Plot.line(grafRows, { x: "label", y: "valor", stroke: "metrica", strokeWidth: 2, tip: true }),
+        Plot.dot(grafRows,  { x: "label", y: "valor", fill: "metrica", r: 3.5 }),
+      ],
+    });
+
+    // Legenda simples em HTML
+    const leg = document.createElement("div");
+    leg.style.cssText = "display:flex;gap:1rem;justify-content:center;margin-top:4px;";
+    ["Precisão", "Objetivos", "Fluidez"].forEach((m, i) => {
+      const item = document.createElement("span");
+      item.style.cssText = `font-size:.72rem;font-weight:600;display:flex;align-items:center;gap:4px;color:var(--theme-foreground-muted);`;
+      const dot = document.createElement("span");
+      dot.style.cssText = `width:8px;height:8px;border-radius:50%;background:${COR_RANGE[i]};flex-shrink:0;display:inline-block;`;
+      item.append(dot, m);
+      leg.append(item);
+    });
+
+    evolucaoContainer.append(chart, leg);
+  } catch(e) {
+    console.error("renderizarGrafico:", e);
+    evolucaoContainer.append(ph("ph-evolucao", "📉", "Evolução por Sessão"));
+  }
 }
 
 const analiseBar    = document.createElement("div"); analiseBar.className = "analise-bar";
@@ -1145,7 +1768,13 @@ const colCentro = html`<div class="col-centro">
   <!-- Heatmap de eventos (Court Heatmap) -->
   <div class="painel">
     <div class="painel-titulo">Heatmap de Eventos por Área</div>
-    <div class="painel-corpo">${phHeatmap}</div>
+    <div class="painel-corpo">${heatmapContainer}</div>
+  </div>
+
+  <!-- Mapa de Colisão -->
+  <div class="painel">
+    <div class="painel-titulo">Colisão</div>
+    <div class="painel-corpo">${colisaoContainer}</div>
   </div>
 
 </div>`;
@@ -1155,7 +1784,7 @@ const colDireita = html`<div class="col-direita">
   <!-- Mapa da Lateralidade -->
   <div class="painel">
     <div class="painel-titulo">Mapa da Lateralidade</div>
-    <div class="painel-corpo">${phLateralidade}</div>
+    <div class="painel-corpo">${lateralidadeContainer}</div>
   </div>
 
   <!-- Análise Comportamental -->
@@ -1170,11 +1799,6 @@ const colDireita = html`<div class="col-direita">
     <div class="painel-corpo">${evolucaoContainer}</div>
   </div>
 
-  <!-- Cobertura de análises -->
-  <div class="painel">
-    <div class="painel-titulo">Cobertura de Análises</div>
-    <div class="painel-corpo">${analiseBar}</div>
-  </div>
 
   <!-- Sessões recentes -->
   <div class="painel">

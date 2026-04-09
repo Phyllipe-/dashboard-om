@@ -4,3 +4,6 @@
  */
 
 export { detectarGiros, posicoesIguais, MARCADORES_GIRO } from "./giros.js";
+export { contarMovimentos, heatTilesParaRects } from "./heatmap.js";
+export { extrairSegmentos, extrairColisoes, corSegmento, raioColisao } from "./colisao.js";
+export { extrairLateralidade, corpoSVGElement, COR_DIREITA, COR_ESQUERDA } from "./lateralidade.js";
