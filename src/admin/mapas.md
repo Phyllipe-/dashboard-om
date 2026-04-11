@@ -27,11 +27,11 @@ toc: false
   .maps-table tr:hover td { background:var(--theme-background-alt); }
 
   .badge { display:inline-block; padding:.18rem .55rem; border-radius:12px; font-size:.78rem; font-weight:600; }
-  .badge-ativo   { background:#dcfce7; color:#166534; }
-  .badge-inativo { background:#fee2e2; color:#991b1b; }
+  .badge-ativo   { background:var(--om-ok-bg); color:var(--om-ok-text); }
+  .badge-inativo { background:var(--om-bad-bg); color:var(--om-bad-text); }
 
   .btn { padding:.45rem 1rem; border-radius:6px; font-size:.875rem; font-weight:600; cursor:pointer; border:none; text-decoration:none; display:inline-block; transition:opacity .15s; }
-  .btn-primary { background:var(--theme-foreground); color:var(--theme-background); }
+  .btn-primary { background:#1e293b; color:#fff; }
   .btn-primary:hover { opacity:.82; }
   .btn-ghost { background:transparent; color:var(--theme-foreground); border:1px solid var(--theme-foreground-faint); }
   .btn-ghost:hover { background:var(--theme-background-alt); }

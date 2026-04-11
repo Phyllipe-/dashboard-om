@@ -18,9 +18,9 @@ toc: false
   .filters { display:flex; gap:.65rem; margin-bottom:1.25rem; align-items:center; flex-wrap:wrap; }
   .filter-label { font-size:.875rem; font-weight:600; color:var(--theme-foreground-muted); }
   .filter-btn { padding:.28rem .8rem; border-radius:20px; border:1px solid var(--theme-foreground-faint); background:transparent; color:var(--theme-foreground); font-size:.82rem; cursor:pointer; }
-  .filter-btn.active { background:var(--theme-foreground); color:var(--theme-background); border-color:var(--theme-foreground); }
+  .filter-btn.active { background:#1e293b; color:#fff; border-color:#1e293b; }
   .search-input { padding:.38rem .7rem; border:1px solid var(--theme-foreground-faint); border-radius:6px; background:var(--theme-background); color:var(--theme-foreground); font-size:.88rem; outline:none; min-width:200px; }
-  .search-input:focus { border-color:#4a90e2; }
+  .search-input:focus { border-color:var(--om-accent); }
 
   /* ── Grid de cards ──────────────────────────── */
   .alunos-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:1rem; }
@@ -36,8 +36,8 @@ toc: false
   .card-meta { font-size:.78rem; color:var(--theme-foreground-muted); line-height:1.5; margin-top:.1rem; }
   .card-meta span { display:block; }
   .badge-finalizada { display:inline-block; font-size:.7rem; font-weight:700; padding:.1rem .45rem; border-radius:4px; margin-top:.25rem; }
-  .badge-sim { background:#dcfce7; color:#166534; }
-  .badge-nao { background:#fee2e2; color:#991b1b; }
+  .badge-sim { background:var(--om-ok-bg); color:var(--om-ok-text); }
+  .badge-nao { background:var(--om-bad-bg); color:var(--om-bad-text); }
   .badge-sd  { background:var(--theme-background-alt); color:var(--theme-foreground-muted); border:1px solid var(--theme-foreground-faintest); }
 
   /* ── Radar ──────────────────────────────────── */
@@ -46,8 +46,9 @@ toc: false
   .radar-wrap svg { width:100%; height:100%; }
 
   /* ── Link para perfil ───────────────────────── */
-  .card-footer { padding:.5rem 1rem .75rem; display:flex; justify-content:flex-end; }
-  .btn-ver { font-size:.78rem; font-weight:600; padding:.28rem .75rem; border-radius:6px; background:var(--theme-foreground); color:var(--theme-background); text-decoration:none; }
+  .card-footer { padding:.5rem 1rem .75rem; display:flex; justify-content:flex-end; gap:.5rem; }
+  .btn-ver { font-size:.78rem; font-weight:600; padding:.28rem .75rem; border-radius:6px; background:#1e293b; color:#fff; text-decoration:none; }
+  .btn-sessao { font-size:.78rem; font-weight:600; padding:.28rem .75rem; border-radius:6px; border:1px solid var(--theme-foreground-faint); background:transparent; color:var(--theme-foreground); text-decoration:none; cursor:pointer; }
   .btn-ver:hover { opacity:.82; }
 
   /* ── Header clicável ─────────────────────────── */
@@ -55,7 +56,7 @@ toc: false
     display:flex; gap:.75rem; align-items:flex-start;
     flex:1; text-decoration:none; color:inherit; cursor:pointer;
   }
-  .card-header-link:hover .card-name { text-decoration:underline; color:#4a90e2; }
+  .card-header-link:hover .card-name { text-decoration:underline; color:var(--om-accent); }
   .card-header-link:hover .avatar { opacity:.88; }
 
   .empty-state { text-align:center; padding:3rem 0; color:var(--theme-foreground-muted); grid-column:1/-1; }
@@ -122,7 +123,7 @@ toc: false
   }
   .btn-primary-modal {
     padding:.5rem 1.1rem; border-radius:8px; font-size:.9rem; font-weight:700;
-    background:var(--theme-foreground); color:var(--theme-background);
+    background:#1e293b; color:#fff;
     text-decoration:none; border:none; cursor:pointer;
   }
   .btn-primary-modal:hover { opacity:.82; }
@@ -136,7 +137,7 @@ toc: false
 
 ```js
 import { requireAuth, logout } from "../auth.js";
-import { fetchAlunos, fetchSessoes, fetchMetricas } from "../api.js";
+import { fetchAlunos, fetchSessoes, fetchMetricasAluno } from "../api.js";
 
 const currentUser = requireAuth();
 const headerUser   = document.getElementById("header-user");
@@ -239,20 +240,17 @@ try {
 // Buscar última sessão + análises de cada aluno em paralelo
 const alunosMeta = await Promise.all(todosAlunos.map(async a => {
   try {
-    const { sessoes } = await fetchSessoes(a.id_aluno);
-    const ultima = sessoes?.[0] ?? null;
-    let metricas = null;
-    let finalizada = null;
-    if (ultima) {
-      const resp = await fetchMetricas(ultima.id_log).catch(() => null);
-      if (resp?.metricas) {
-        metricas = resp.metricas;
-        finalizada = resp.atividade_finalizada;
-      }
-    }
-    return { ...a, ultimaSessao: ultima, metricas, finalizada };
+    const [{ sessoes }, respMetricas] = await Promise.all([
+      fetchSessoes(a.id_aluno),
+      fetchMetricasAluno(a.id_aluno).catch(() => null),
+    ]);
+    const ultima      = sessoes?.[0] ?? null;
+    const totalSessoes = sessoes?.length ?? 0;
+    const metricas    = respMetricas?.metricas ?? null;
+    const finalizada  = respMetricas?.atividade_finalizada ?? null;
+    return { ...a, ultimaSessao: ultima, totalSessoes, metricas, finalizada };
   } catch {
-    return { ...a, ultimaSessao: null, metricas: null, finalizada: null };
+    return { ...a, ultimaSessao: null, totalSessoes: 0, metricas: null, finalizada: null };
   }
 }));
 
@@ -306,7 +304,7 @@ function abrirModal(a) {
       <div class="modal-badges">
         <span class="modal-badge-label">Última sessão:</span>
         <span style="font-size:.82rem">Mapa: <strong>${sessao?.nome_mapa ?? "—"}</strong></span>
-        <span style="font-size:.82rem">Sessão: <strong>#${sessao?.id_log ?? "—"}</strong></span>
+        <span style="font-size:.82rem">Sessões jogadas: <strong>${a.totalSessoes}</strong></span>
         ${badgeFin}
         ${media !== null ? `<span style="margin-left:auto;font-size:.82rem;color:${cor.stroke};font-weight:700">Média: ${media}%</span>` : ""}
       </div>
@@ -402,8 +400,8 @@ function renderGrid() {
         <div class="card-info">
           <div class="card-name">${a.nome_completo}</div>
           <div class="card-meta">
-            <span>Mapa: ${sessao?.nome_mapa ?? "—"}</span>
-            <span>Sessão: ${sessao?.id_log ?? "—"}</span>
+            <span>Último mapa: ${sessao?.nome_mapa ?? "—"}</span>
+            <span>Sessões jogadas: ${a.totalSessoes}</span>
           </div>
           ${badgeHTML}
         </div>
@@ -427,7 +425,12 @@ function renderGrid() {
     // Footer
     const footer = document.createElement("div");
     footer.className = "card-footer";
-    footer.innerHTML = `<a class="btn-ver" href="/visualizacao/perfil-aluno?id=${a.id_aluno}">Ver perfil →</a>`;
+    const sessaoHref = a.totalSessoes > 0
+      ? `/visualizacao/sessoes?aluno=${a.id_aluno}`
+      : null;
+    footer.innerHTML = `
+      ${sessaoHref ? `<a class="btn-sessao" href="${sessaoHref}">Ver sessões (${a.totalSessoes})</a>` : `<span class="btn-sessao" style="opacity:.4;cursor:default">Sem sessões</span>`}
+      <a class="btn-ver" href="/visualizacao/perfil-aluno?id=${a.id_aluno}">Ver perfil →</a>`;
 
     card.append(header, radarWrap, footer);
     grid.append(card);

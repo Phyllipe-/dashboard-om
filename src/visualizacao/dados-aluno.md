@@ -10,8 +10,8 @@ toc: false
   .aluno-title  { font-size:1.5rem; font-weight:700; margin:0 0 .2rem; }
   .aluno-meta   { font-size:.875rem; color:var(--theme-foreground-muted); }
   .badge { display:inline-block; padding:.18rem .55rem; border-radius:12px; font-size:.78rem; font-weight:600; }
-  .badge-ativo   { background:#dcfce7; color:#166534; }
-  .badge-inativo { background:#fee2e2; color:#991b1b; }
+  .badge-ativo   { background:var(--om-ok-bg); color:var(--om-ok-text); }
+  .badge-inativo { background:var(--om-bad-bg); color:var(--om-bad-text); }
   .stats-bar { display:flex; gap:1.25rem; margin-bottom:1.5rem; flex-wrap:wrap; }
   .stat-card { background:var(--theme-background-alt); border:1px solid var(--theme-foreground-faintest); border-radius:8px; padding:.65rem 1.1rem; min-width:110px; }
   .stat-value { font-size:1.5rem; font-weight:700; }
@@ -31,7 +31,7 @@ toc: false
   .analise-ausente    { background:var(--theme-background); border:1px dashed var(--theme-foreground-faintest); color:var(--theme-foreground-muted); font-style:italic; }
   .analise-label { font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--theme-foreground-muted); margin-right:.25rem; }
   .no-data { font-size:.85rem; color:var(--theme-foreground-muted); padding:.5rem .75rem; font-style:italic; }
-  .analise-ver-link { margin-left:auto; padding:.28rem .75rem; border-radius:6px; font-size:.8rem; font-weight:600; background:var(--theme-foreground); color:var(--theme-background); text-decoration:none; white-space:nowrap; }
+  .analise-ver-link { margin-left:auto; padding:.28rem .75rem; border-radius:6px; font-size:.8rem; font-weight:600; background:#1e293b; color:#fff; text-decoration:none; white-space:nowrap; }
   .analise-ver-link:hover { opacity:.82; }
   .btn-ghost-sm { padding:.35rem .85rem; border-radius:6px; font-size:.875rem; font-weight:600; cursor:pointer; border:1px solid var(--theme-foreground-faint); background:transparent; color:var(--theme-foreground); text-decoration:none; }
   .btn-ghost-sm:hover { background:var(--theme-background-alt); }
