@@ -154,6 +154,11 @@ export function fetchSessoes(id_aluno) {
   return apiFetch(`/treinos/sessoes?id_aluno=${id_aluno}`);
 }
 
+/** GET /api/treinos/sessoes/:id_log — detalhe de uma sessão */
+export function fetchSessao(id_log) {
+  return apiFetch(`/treinos/sessoes/${id_log}`);
+}
+
 /** GET /api/analises/sessao/:id_log — caminhos dos arquivos de análise */
 export function fetchAnalises(id_log) {
   return apiFetch(`/analises/sessao/${id_log}`);
@@ -162,4 +167,9 @@ export function fetchAnalises(id_log) {
 /** GET /api/analises/sessao/:id_log/metricas — Precisão, Objetivos e Fluidez calculados */
 export function fetchMetricas(id_log) {
   return apiFetch(`/analises/sessao/${id_log}/metricas`);
+}
+
+/** GET /api/analises/aluno/:id/metricas — média de todas as sessões do aluno */
+export function fetchMetricasAluno(id_aluno) {
+  return apiFetch(`/analises/aluno/${id_aluno}/metricas`);
 }
