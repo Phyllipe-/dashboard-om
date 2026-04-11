@@ -56,7 +56,7 @@ toc: false
     border-radius:6px; background:var(--theme-background);
     color:var(--theme-foreground); font-size:.88rem; outline:none;
   }
-  .sel-select:focus { border-color:#4a90e2; }
+  .sel-select:focus { border-color:var(--om-accent); }
 
   /* ── Filtros ──────────────────────────────────── */
   .filtro-titulo {
@@ -69,7 +69,7 @@ toc: false
     display:flex; align-items:center; gap:.5rem;
     font-size:.875rem; cursor:pointer; user-select:none;
   }
-  .filtro-check input[type=checkbox] { accent-color:#4a90e2; width:14px; height:14px; }
+  .filtro-check input[type=checkbox] { accent-color:var(--om-accent); width:14px; height:14px; }
   .filtro-icon { font-size:.75rem; width:18px; text-align:center; }
 
   .filtro-sessao { display:flex; flex-direction:column; gap:.4rem; margin-bottom:.75rem; }
@@ -133,7 +133,7 @@ toc: false
   .analise-row { display:flex; align-items:center; gap:.65rem; font-size:.82rem; }
   .analise-name { width:110px; flex-shrink:0; color:var(--theme-foreground-muted); }
   .bar-track { flex:1; height:6px; background:var(--theme-foreground-faintest); border-radius:3px; overflow:hidden; }
-  .bar-fill  { height:100%; border-radius:3px; background:#4a90e2; transition:width .4s; }
+  .bar-fill  { height:100%; border-radius:3px; background:var(--om-accent); transition:width .4s; }
   .bar-count { width:36px; text-align:right; font-size:.78rem; color:var(--theme-foreground-muted); }
 
   /* ── Sessões recentes ─────────────────────────── */
@@ -145,11 +145,11 @@ toc: false
     font-size:.82rem; cursor:pointer; transition:background .12s;
   }
   .session-item:hover, .session-item.ativa { background:var(--theme-background-alt); }
-  .session-item.ativa { border-color:#4a90e2; }
+  .session-item.ativa { border-color:var(--om-accent); }
   .si-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
   .si-nome { flex:1; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .si-data { color:var(--theme-foreground-muted); font-size:.76rem; flex-shrink:0; }
-  .si-link { font-size:.76rem; font-weight:600; color:#4a90e2; text-decoration:none; flex-shrink:0; }
+  .si-link { font-size:.76rem; font-weight:600; color:var(--om-accent); text-decoration:none; flex-shrink:0; }
   .si-link:hover { text-decoration:underline; }
 
   .empty-hint { font-size:.85rem; color:var(--theme-foreground-muted); font-style:italic; padding:.5rem 0; }
@@ -175,7 +175,7 @@ toc: false
     background:transparent; color:var(--theme-foreground);
     font-size:.74rem; cursor:pointer; white-space:nowrap;
   }
-  .giro-btn.active { background:var(--theme-foreground); color:var(--theme-background); border-color:var(--theme-foreground); }
+  .giro-btn.active { background:#1e293b; color:#fff; border-color:#1e293b; }
   .giro-btn.dir-right.active { background:#e07b54; border-color:#e07b54; color:#fff; }
   .giro-btn.dir-left.active  { background:#4a90d9; border-color:#4a90d9; color:#fff; }
   .giro-count { font-size:.76rem; color:var(--theme-foreground-muted); margin-bottom:.4rem; }
@@ -190,7 +190,7 @@ toc: false
     border-radius:6px; background:var(--theme-background);
     color:var(--theme-foreground); font-size:.84rem; outline:none;
   }
-  .filtro-sessoes-row select:focus { border-color:#4a90e2; }
+  .filtro-sessoes-row select:focus { border-color:var(--om-accent); }
   .filtro-concl-btns { display:flex; gap:.35rem; }
   .filtro-concl-btns button {
     flex:1; padding:.28rem .4rem;
@@ -199,15 +199,15 @@ toc: false
     font-size:.75rem; cursor:pointer; white-space:nowrap;
   }
   .filtro-concl-btns button.active {
-    background:var(--theme-foreground); color:var(--theme-background);
-    border-color:var(--theme-foreground);
+    background:#1e293b; color:#fff;
+    border-color:#1e293b;
   }
   .filtro-badge {
     font-size:.75rem; font-weight:700; text-align:right;
     color:var(--theme-foreground-muted);
     padding:.2rem 0 0;
   }
-  .filtro-badge span { color:#4a90e2; }
+  .filtro-badge span { color:var(--om-accent); }
 </style>
 
 ```js
@@ -390,7 +390,6 @@ function aplicarFiltroSessoes() {
   atualizarStats(filtradas);
   atualizarAnaliseBar(filtradas);
   atualizarSessionList(filtradas);
-  renderizarGrafico(filtradas);
 
   // Mapa de giros — usa a primeira sessão filtrada
   const target = filtradas[0];
@@ -403,6 +402,7 @@ function aplicarFiltroSessoes() {
     renderizarHeatmap();
     renderizarColisao();
     renderizarLateralidade();
+    renderizarComportamental();
   }
 }
 
@@ -549,11 +549,12 @@ function _renderizarMapaGiros() {
     marks: [
       Plot.rect(floorRects, {
         x1: "x1", y1: "y1", x2: "x2", y2: "y2",
-        fill: d => d.areaInterna ? "#e8d5b7" : "#c8e6c9", stroke: "none",
+        fill: "#f0f0f0",
+        stroke: d => d.areaInterna ? "#cccccc" : "none", strokeWidth: 0.5,
       }),
       Plot.rect(doorRects, {
         x1: "x1", y1: "y1", x2: "x2", y2: "y2",
-        fill: "#87ceeb", fillOpacity: 0.8, stroke: "none",
+        fill: "#f0f0f0", stroke: "none",
       }),
       Plot.link(wallEdges, {
         x1: "x1", y1: "y1", x2: "x2", y2: "y2",
@@ -842,11 +843,12 @@ function _renderizarHeatmap() {
     marks: [
       Plot.rect(floorRects, {
         x1: "x1", y1: "y1", x2: "x2", y2: "y2",
-        fill: d => d.areaInterna ? "#e8d5b7" : "#c8e6c9", stroke: "none",
+        fill: "#f0f0f0",
+        stroke: d => d.areaInterna ? "#cccccc" : "none", strokeWidth: 0.5,
       }),
       Plot.rect(doorRects, {
         x1: "x1", y1: "y1", x2: "x2", y2: "y2",
-        fill: "#87ceeb", fillOpacity: 0.8, stroke: "none",
+        fill: "#f0f0f0", stroke: "none",
       }),
       // Tiles de calor — azuis com transparência (mapa visível por baixo)
       Plot.rect(heatTiles, {
@@ -1080,11 +1082,12 @@ function _renderizarColisao() {
       // Mapa base
       Plot.rect(floorRects, {
         x1: "x1", y1: "y1", x2: "x2", y2: "y2",
-        fill: d => d.areaInterna ? "#e8d5b7" : "#c8e6c9", stroke: "none",
+        fill: "#f0f0f0",
+        stroke: d => d.areaInterna ? "#cccccc" : "none", strokeWidth: 0.5,
       }),
       Plot.rect(doorRects, {
         x1: "x1", y1: "y1", x2: "x2", y2: "y2",
-        fill: "#87ceeb", fillOpacity: 0.8, stroke: "none",
+        fill: "#f0f0f0", stroke: "none",
       }),
       // Trajetórias ortogonais
       ...segmentos.length ? [Plot.link(segmentos, {
@@ -1281,6 +1284,7 @@ async function carregarMapaGiros(id_log) {
     renderizarHeatmap();
     renderizarColisao();
     renderizarLateralidade();
+    renderizarComportamental();
   } catch (e) {
     if (myVersion !== giroVersion) return;
     giroHint.textContent = `Erro ao carregar: ${e.message}`;
@@ -1435,78 +1439,135 @@ function _renderizarLateralidade() {
 
 const lateralidadeContainer = document.createElement("div");
 lateralidadeContainer.style.cssText = "min-height:260px";
-const phComportamental = ph("ph-comportamental","📈",  "Análise Comportamental");
 const phRadar          = ph("ph-radar",         "🕸️",  "Radar de Métricas");
 
-// Gráfico de evolução por sessão (real)
-const evolucaoContainer = document.createElement("div");
-evolucaoContainer.style.cssText = "min-height:180px";
+// ── Análise Comportamental ────────────────────────────────────────────────
+function calcularComportamental(dadosLog, rows, cols, giros) {
+  // 1. Exploração — tiles únicos visitados / total de tiles do mapa
+  const contagem    = contarMovimentos(dadosLog);
+  const tilesUnicos = contagem.size;
+  const totalTiles  = (rows * cols) || 1;
+  const exploracaoScore = Math.min(tilesUnicos / totalTiles, 1) * 100;
 
-function renderizarGrafico(filtradas) {
-  evolucaoContainer.replaceChildren();
+  // 2. Controle — ausência de colisões (taxa colisão/ação invertida)
+  let totalAcoes = 0, totalColisoes = 0;
+  for (const obj of dadosLog?.objectives ?? []) {
+    totalAcoes    += (obj.actions    ?? []).length;
+    totalColisoes += (obj.collisions ?? []).length;
+  }
+  const taxaColisao    = totalAcoes > 0 ? totalColisoes / totalAcoes : 0;
+  // 0 colisões = 100 pts; >=20% de ações são colisões = 0 pts
+  const controleScore  = Math.max(0, Math.min(100, (1 - taxaColisao * 5) * 100));
 
-  // Ordem cronológica: API retorna mais recente primeiro, invertemos
-  const comMetricas = [...filtradas].reverse().filter(a => a.metricas);
+  // 3. Lateralidade — equilíbrio entre direita e esquerda
+  const lat            = extrairLateralidade(dadosLog);
+  const equilibrioScore = (1 - Math.abs(lat.pctDireita - lat.pctEsquerda)) * 100;
 
-  if (!comMetricas.length) {
-    evolucaoContainer.append(ph("ph-evolucao", "📉", "Evolução por Sessão"));
+  // 4. Concentração — percentual do movimento nos 20% de tiles mais visitados
+  const counts       = [...contagem.values()].sort((a, b) => b - a);
+  const totalVisitas = counts.reduce((s, v) => s + v, 0) || 1;
+  const nTop         = Math.max(1, Math.ceil(counts.length * 0.2));
+  const visitasTop   = counts.slice(0, nTop).reduce((s, v) => s + v, 0);
+  const concentracaoScore = (visitasTop / totalVisitas) * 100;
+
+  // 5. Orientação — poucos giros em relação ao total de ações
+  const girosRate      = totalAcoes > 0 ? giros.length / totalAcoes : 0;
+  // 0% giros = 100 pts; >=30% das ações são giros = 0 pts
+  const orientacaoScore = Math.max(0, Math.min(100, (1 - girosRate / 0.3) * 100));
+
+  const dimensoes = [
+    { nome: "Exploração",     score: exploracaoScore,    desc: "Área do mapa percorrida" },
+    { nome: "Controle",       score: controleScore,      desc: "Ausência de colisões" },
+    { nome: "Lateralidade",   score: equilibrioScore,    desc: "Equilíbrio direita / esquerda" },
+    { nome: "Concentração",   score: concentracaoScore,  desc: "Foco nas áreas mais visitadas" },
+    { nome: "Orientação",     score: orientacaoScore,    desc: "Navegação sem giros excessivos" },
+  ];
+
+  // Pontuação composta ponderada
+  const pesos    = [0.25, 0.25, 0.15, 0.20, 0.15];
+  const composta = dimensoes.reduce((s, d, i) => s + d.score * pesos[i], 0);
+
+  return { dimensoes, composta };
+}
+
+function corScore(v) {
+  return v >= 70 ? "#5ba85b" : v >= 40 ? "#e8a838" : "#e05454";
+}
+
+function renderizarComportamental() {
+  try { _renderizarComportamental(); } catch(e) { console.error("renderizarComportamental:", e); }
+}
+function _renderizarComportamental() {
+  comportamentalContainer.replaceChildren();
+
+  const { dadosLog, rows, cols, giros } = giroState;
+  if (!dadosLog) {
+    const hint = document.createElement("div");
+    hint.className = "giro-hint";
+    hint.textContent = "Selecione uma sessão para ver a análise comportamental.";
+    comportamentalContainer.append(hint);
     return;
   }
 
-  // Eixo X = "#id_log" — único por sessão, independente de data
-  const grafRows = comMetricas.flatMap(a => {
-    const label = `#${a.sessao.id_log}`;
-    const m = a.metricas;
-    return [
-      { label, metrica: "Precisão",  valor: m.precisao  },
-      { label, metrica: "Objetivos", valor: m.objetivos },
-      { label, metrica: "Fluidez",   valor: m.fluidez   },
-    ];
-  });
+  const { dimensoes, composta } = calcularComportamental(dadosLog, rows, cols, giros);
 
-  const labelsDomain = comMetricas.map(a => `#${a.sessao.id_log}`);
-  const COR_RANGE = ["#4a90e2", "#5ba85b", "#e07b54"];
+  // ── Barras de dimensões ──────────────────────────────────────────────────
+  const grid = document.createElement("div");
+  grid.style.cssText = "display:flex;flex-direction:column;gap:8px;margin-bottom:14px;";
 
-  try {
-    const w = evolucaoContainer.getBoundingClientRect().width || evolucaoContainer.offsetWidth || 400;
-    const chart = Plot.plot({
-      width: Math.max(w, 240),
-      height: 180,
-      marginLeft: 36, marginRight: 8, marginBottom: 40, marginTop: 12,
-      x: {
-        label: null,
-        domain: labelsDomain,
-        tickRotate: labelsDomain.length > 5 ? -40 : 0,
-      },
-      y: { label: "%", domain: [0, 100], grid: true, ticks: 5 },
-      color: {
-        domain: ["Precisão", "Objetivos", "Fluidez"],
-        range: COR_RANGE,
-      },
-      marks: [
-        Plot.line(grafRows, { x: "label", y: "valor", stroke: "metrica", strokeWidth: 2, tip: true }),
-        Plot.dot(grafRows,  { x: "label", y: "valor", fill: "metrica", r: 3.5 }),
-      ],
-    });
+  for (const d of dimensoes) {
+    const row = document.createElement("div");
+    row.style.cssText = "display:grid;grid-template-columns:90px 1fr 36px;align-items:center;gap:6px;";
 
-    // Legenda simples em HTML
-    const leg = document.createElement("div");
-    leg.style.cssText = "display:flex;gap:1rem;justify-content:center;margin-top:4px;";
-    ["Precisão", "Objetivos", "Fluidez"].forEach((m, i) => {
-      const item = document.createElement("span");
-      item.style.cssText = `font-size:.72rem;font-weight:600;display:flex;align-items:center;gap:4px;color:var(--theme-foreground-muted);`;
-      const dot = document.createElement("span");
-      dot.style.cssText = `width:8px;height:8px;border-radius:50%;background:${COR_RANGE[i]};flex-shrink:0;display:inline-block;`;
-      item.append(dot, m);
-      leg.append(item);
-    });
+    const lbl = document.createElement("span");
+    lbl.style.cssText = "font-size:.72rem;color:var(--theme-foreground-muted);white-space:nowrap;";
+    lbl.title = d.desc;
+    lbl.textContent = d.nome;
 
-    evolucaoContainer.append(chart, leg);
-  } catch(e) {
-    console.error("renderizarGrafico:", e);
-    evolucaoContainer.append(ph("ph-evolucao", "📉", "Evolução por Sessão"));
+    const track = document.createElement("div");
+    track.style.cssText = "background:var(--theme-background-alt,#e8e8e8);border-radius:4px;height:10px;overflow:hidden;";
+    const fill = document.createElement("div");
+    fill.style.cssText = `width:${d.score.toFixed(1)}%;height:100%;border-radius:4px;background:${corScore(d.score)};transition:width .4s;`;
+    track.append(fill);
+
+    const val = document.createElement("span");
+    val.style.cssText = `font-size:.72rem;font-weight:700;color:${corScore(d.score)};text-align:right;`;
+    val.textContent = Math.round(d.score);
+
+    row.append(lbl, track, val);
+    grid.append(row);
   }
+
+  // ── Pontuação composta ───────────────────────────────────────────────────
+  const compostoWrap = document.createElement("div");
+  compostoWrap.style.cssText = "border-top:1px solid var(--theme-background-alt,#ddd);padding-top:10px;";
+
+  const compostoLbl = document.createElement("div");
+  compostoLbl.style.cssText = "font-size:.7rem;color:var(--theme-foreground-muted);margin-bottom:5px;display:flex;justify-content:space-between;align-items:center;";
+  compostoLbl.innerHTML = `<span>Pontuação Composta</span><span style="font-size:.85rem;font-weight:700;color:${corScore(composta)}">${composta.toFixed(0)}<span style="font-size:.65rem;font-weight:400;color:var(--theme-foreground-muted)"> / 100</span></span>`;
+
+  const compostoTrack = document.createElement("div");
+  compostoTrack.style.cssText = "position:relative;background:var(--theme-background-alt,#e8e8e8);border-radius:6px;height:14px;overflow:visible;";
+
+  const compostoFill = document.createElement("div");
+  compostoFill.style.cssText = `width:${composta.toFixed(1)}%;height:100%;border-radius:6px;background:${corScore(composta)};transition:width .4s;`;
+
+  // Marcador de 50%
+  const m50 = document.createElement("div");
+  m50.style.cssText = "position:absolute;left:50%;top:-3px;bottom:-3px;width:2px;margin-left:-1px;background:#555;opacity:.5;border-radius:1px;pointer-events:none;";
+  const m50lbl = document.createElement("div");
+  m50lbl.style.cssText = "position:absolute;left:50%;top:-14px;transform:translateX(-50%);font-size:.55rem;color:#555;white-space:nowrap;";
+  m50lbl.textContent = "50";
+
+  compostoTrack.append(compostoFill, m50, m50lbl);
+  compostoWrap.append(compostoLbl, compostoTrack);
+
+  comportamentalContainer.append(grid, compostoWrap);
 }
+
+const comportamentalContainer = document.createElement("div");
+comportamentalContainer.style.cssText = "min-height:200px";
+
 
 const analiseBar    = document.createElement("div"); analiseBar.className = "analise-bar";
 const sessionListEl = document.createElement("div"); sessionListEl.className = "session-list";
@@ -1790,14 +1851,10 @@ const colDireita = html`<div class="col-direita">
   <!-- Análise Comportamental -->
   <div class="painel">
     <div class="painel-titulo">Análise Comportamental</div>
-    <div class="painel-corpo">${phComportamental}</div>
+    <div class="painel-corpo">${comportamentalContainer}</div>
   </div>
 
-  <!-- Evolução por sessão -->
-  <div class="painel">
-    <div class="painel-titulo">Evolução por Sessão</div>
-    <div class="painel-corpo">${evolucaoContainer}</div>
-  </div>
+
 
 
   <!-- Sessões recentes -->

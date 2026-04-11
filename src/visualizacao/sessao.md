@@ -17,8 +17,8 @@ toc: false
   .stat-lbl { font-size:.72rem; color:var(--theme-foreground-muted); margin-top:.1rem; }
 
   .badge { display:inline-block; font-size:.78rem; font-weight:700; padding:.2rem .6rem; border-radius:5px; }
-  .badge-ok { background:#dcfce7; color:#166534; }
-  .badge-no { background:#fee2e2; color:#991b1b; }
+  .badge-ok { background:var(--om-ok-bg); color:var(--om-ok-text); }
+  .badge-no { background:var(--om-bad-bg); color:var(--om-bad-text); }
 
   .img-wrap { border-radius:8px; overflow:hidden; border:1px solid var(--theme-foreground-faintest); background:var(--theme-background-alt); display:flex; align-items:center; justify-content:center; min-height:180px; }
   .img-wrap img { width:100%; height:auto; display:block; }

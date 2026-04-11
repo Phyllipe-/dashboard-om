@@ -8,11 +8,11 @@ toc: false
   .page-header h1 { margin:0; font-size:1.5rem; }
   .section { margin-bottom:2rem; }
   .section-title { font-size:1rem; font-weight:700; margin-bottom:.75rem; display:flex; align-items:center; gap:.5rem; }
-  .section-num { display:inline-flex; align-items:center; justify-content:center; width:1.5rem; height:1.5rem; border-radius:50%; background:var(--theme-foreground); color:var(--theme-background); font-size:.78rem; font-weight:700; flex-shrink:0; }
+  .section-num { display:inline-flex; align-items:center; justify-content:center; width:1.5rem; height:1.5rem; border-radius:50%; background:#1e293b; color:#fff; font-size:.78rem; font-weight:700; flex-shrink:0; }
   .form-field { display:flex; flex-direction:column; gap:.35rem; margin-bottom:1rem; }
   .form-field label { font-size:.875rem; font-weight:600; }
   .form-field input, .form-field textarea { padding:.55rem .75rem; border:1px solid var(--theme-foreground-faint); border-radius:6px; background:var(--theme-background); color:var(--theme-foreground); font-size:.95rem; outline:none; transition:border-color .15s; }
-  .form-field input:focus, .form-field textarea:focus { border-color:#4a90e2; }
+  .form-field input:focus, .form-field textarea:focus { border-color:var(--om-accent); }
   .form-field textarea { resize:vertical; min-height:72px; }
   .divider { border:none; border-top:1px solid var(--theme-foreground-faintest); margin:1.5rem 0; }
 
@@ -30,7 +30,7 @@ toc: false
   .btn-apropriar { padding:.15rem .5rem; font-size:.75rem; border-radius:4px; border:1px solid var(--theme-foreground-faint); background:transparent; color:var(--theme-foreground); cursor:pointer; white-space:nowrap; flex-shrink:0; }
   .btn-apropriar:hover { background:var(--theme-background-alt); }
   .btn-apropriar:disabled { opacity:.4; cursor:not-allowed; }
-  .btn-add { padding:.15rem .5rem; font-size:.75rem; border-radius:4px; border:none; background:var(--theme-foreground); color:var(--theme-background); cursor:pointer; white-space:nowrap; flex-shrink:0; }
+  .btn-add { padding:.15rem .5rem; font-size:.75rem; border-radius:4px; border:none; background:#1e293b; color:#fff; cursor:pointer; white-space:nowrap; flex-shrink:0; }
   .btn-add:hover { opacity:.82; }
 
   /* Sequência */
@@ -47,20 +47,20 @@ toc: false
   .aluno-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:.5rem; }
   .aluno-card { display:flex; align-items:center; gap:.6rem; padding:.5rem .75rem; border:1px solid var(--theme-foreground-faintest); border-radius:6px; cursor:pointer; user-select:none; transition:all .1s; font-size:.88rem; }
   .aluno-card:hover { background:var(--theme-background-alt); }
-  .aluno-card.selected { border-color:#4a90e2; background:#eff6ff; color:#1d4ed8; }
+  .aluno-card.selected { border-color:var(--om-accent); background:#eff6ff; color:#1d4ed8; }
   .check-icon { font-size:1rem; flex-shrink:0; }
 
   /* Actions */
   .form-actions { display:flex; gap:.75rem; margin-top:1.75rem; align-items:center; }
   .btn { padding:.6rem 1.25rem; border-radius:6px; font-size:.95rem; font-weight:600; cursor:pointer; border:none; text-decoration:none; display:inline-block; transition:opacity .15s; }
-  .btn-primary { background:var(--theme-foreground); color:var(--theme-background); }
+  .btn-primary { background:#1e293b; color:#fff; }
   .btn-primary:hover:not(:disabled) { opacity:.82; }
   .btn-primary:disabled { opacity:.45; cursor:not-allowed; }
   .btn-ghost { background:transparent; color:var(--theme-foreground); border:1px solid var(--theme-foreground-faint); }
   .btn-ghost:hover { background:var(--theme-background-alt); }
   .alert { padding:.7rem .9rem; border-radius:6px; font-size:.875rem; margin-top:1rem; }
-  .alert-error   { background:#fee2e2; color:#b91c1c; }
-  .alert-success { background:#dcfce7; color:#166534; }
+  .alert-error   { background:var(--om-bad-bg); color:var(--om-bad-text); }
+  .alert-success { background:var(--om-ok-bg); color:var(--om-ok-text); }
   .hint { font-size:.78rem; color:var(--theme-foreground-muted); }
   .empty-hint { font-size:.85rem; color:var(--theme-foreground-muted); padding:.5rem .75rem; font-style:italic; }
   .col-label { font-size:.8rem; font-weight:600; margin-bottom:.4rem; color:var(--theme-foreground-muted); letter-spacing:.03em; }
