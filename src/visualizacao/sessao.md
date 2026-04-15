@@ -28,6 +28,12 @@ toc: false
   .btn-back { font-size:.82rem; padding:.3rem .75rem; border-radius:6px; border:1px solid var(--theme-foreground-faint); background:transparent; color:var(--theme-foreground); text-decoration:none; }
   .btn-back:hover { background:var(--theme-background-alt); }
 
+  .session-nav { display:flex; align-items:center; justify-content:space-between; margin-top:1.5rem; padding-top:1rem; border-top:1px solid var(--theme-foreground-faintest); }
+  .nav-btn { padding:.35rem .85rem; border-radius:6px; border:1px solid var(--theme-foreground-faint); background:transparent; color:var(--theme-foreground); font-size:.85rem; text-decoration:none; }
+  .nav-btn:hover { background:var(--theme-background-alt); }
+  .nav-btn-disabled { padding:.35rem .85rem; border-radius:6px; border:1px solid var(--theme-foreground-faintest); color:var(--theme-foreground-faint); font-size:.85rem; }
+  .nav-center { font-size:.82rem; color:var(--theme-foreground-muted); }
+
   .info-table { width:100%; border-collapse:collapse; font-size:.88rem; }
   .info-table td { padding:.45rem 0; border-bottom:1px solid var(--theme-foreground-faintest); }
   .info-table tr:last-child td { border-bottom:none; }
@@ -37,7 +43,7 @@ toc: false
 
 ```js
 import { requireAuth, logout } from "../auth.js";
-import { fetchSessao, fetchMetricas } from "../api.js";
+import { fetchSessao, fetchMetricas, fetchSessoes } from "../api.js";
 
 requireAuth();
 const headerLogout = document.getElementById("header-logout");
@@ -54,15 +60,34 @@ if (!id_log) {
   throw new Error("sem id");
 }
 
-let sessao, metricas;
+let sessao, metricas, todasSessoes = [];
 try {
   [sessao, metricas] = await Promise.all([
     fetchSessao(id_log),
     fetchMetricas(id_log).catch(() => null),
   ]);
+  if (id_aluno) {
+    ({ sessoes: todasSessoes } = await fetchSessoes(parseInt(id_aluno)).catch(() => ({ sessoes: [] })));
+  }
 } catch(e) {
   display(html`<div style="color:#b91c1c;padding:1rem;background:#fee2e2;border-radius:8px">Erro: ${e.message}</div>`);
   throw e;
+}
+
+// Navegação entre sessões (ordenadas desc — mesma ordem da lista)
+const idxAtual       = todasSessoes.findIndex(s => s.id_log === id_log);
+const sessaoAnterior = todasSessoes[idxAtual + 1] ?? null; // mais antiga
+const sessaoProxima  = todasSessoes[idxAtual - 1] ?? null; // mais recente
+
+function navBtn(sessao, rotulo) {
+  if (!sessao) {
+    const s = document.createElement("span"); s.className = "nav-btn-disabled"; s.textContent = rotulo; return s;
+  }
+  const a = document.createElement("a");
+  a.className = "nav-btn";
+  a.href = `/visualizacao/sessao?id=${sessao.id_log}&aluno=${id_aluno}`;
+  a.textContent = rotulo;
+  return a;
 }
 
 function fmtTempo(s) {
@@ -227,16 +252,25 @@ painelInfo.append(painelInfoTitulo, painelInfoCorpo);
 
 // ── Layout ────────────────────────────────────────────────────────────────
 const layout = document.createElement("div"); layout.className = "sessao-layout";
-layout.append(painelMini, painelRender, painelRadar, painelInfo);
+layout.append(painelMini, painelInfo, painelRender, painelRadar);
 
 display(html`<div>
   <div class="page-header">
-    <a class="btn-back" href="${voltar}">← Voltar</a>
     <h1 style="margin:0;font-size:1.3rem">Sessão #${id_log} — ${sessao.nome_mapa}</h1>
     ${badge}
     <span style="margin-left:auto;font-size:.8rem;color:var(--theme-foreground-muted)">${sessao.data}</span>
   </div>
   ${statRow}
   ${layout}
+  <div class="session-nav">
+    ${navBtn(sessaoAnterior, "← Sessão anterior")}
+    ${idxAtual >= 0
+      ? html`<span class="nav-center">Sessão ${idxAtual + 1} de ${todasSessoes.length}</span>`
+      : html`<span></span>`}
+    ${navBtn(sessaoProxima, "Sessão seguinte →")}
+  </div>
+  <div style="margin-top:1rem">
+    <a class="btn-back" href="${voltar}">← Voltar</a>
+  </div>
 </div>`);
 ```

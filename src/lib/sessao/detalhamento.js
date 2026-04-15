@@ -45,12 +45,13 @@ export function graficoLateralidade(sessoesComLog, Plot) {
   if (!dados.length) return aviso("Nenhuma ação lateral registada.");
 
   const labels = [...new Map(dados.map(d => [d.lbl, d.lbl])).keys()];
+  const maxVal = Math.max(...dados.map(d => Math.abs(d.valor)), 1);
 
   return Plot.plot({
     width: W,
     height: Math.max(90, labels.length * 28 + 40),
     marginLeft: 56, marginRight: 8, marginTop: 8, marginBottom: 24,
-    x: { label: null, tickFormat: d => Math.abs(d) },
+    x: { label: null, domain: [-maxVal * 1.1, maxVal * 1.1], ticks: [-maxVal, 0, maxVal], tickFormat: d => Math.abs(d) },
     y: { domain: labels, label: null },
     color: { domain: ["Direita", "Esquerda"], range: ["#5ba85b", "#e07b54"], legend: true },
     marks: [
@@ -96,8 +97,7 @@ export function graficoTrajetoria(sessoesComLog, camadas, Plot) {
     x1: p1[0], y1: p1[1], x2: p2[0], y2: p2[1],
   }));
 
-  // ── Conjunto de tiles navegáveis (chão + portas) ─────────────────────────────
-  // col = floor(x1);  row = floor(min(y1,y2) + rows)  [y em coords GeoJSON]
+  // ── Conjunto de tiles navegáveis ─────────────────────────────────────────────
   const navSet = new Set();
   for (const r of [...floorRects, ...doorRects]) {
     const col = Math.floor(r.x1);
@@ -105,25 +105,19 @@ export function graficoTrajetoria(sessoesComLog, camadas, Plot) {
     navSet.add(`${col},${row}`);
   }
 
-  // ── Máscara reversa: tiles fora da área navegável ────────────────────────────
-  // Plot.density é KDE — vaza além dos dados mesmo com pontos filtrados.
-  // Solução: pintar todos os tiles NÃO navegáveis com a cor de fundo POR CIMA
-  // da densidade, confinando visualmente as curvas dentro do mapa navegável.
+  // ── Máscara reversa ───────────────────────────────────────────────────────────
   const maskTiles = [];
   if (navSet.size > 0 && cols > 0 && rows > 0) {
     for (let col = 0; col < cols; col++) {
       for (let row = 0; row < rows; row++) {
         if (!navSet.has(`${col},${row}`)) {
-          maskTiles.push({
-            x1: col,     x2: col + 1,
-            y1: row - rows, y2: row + 1 - rows,
-          });
+          maskTiles.push({ x1: col, x2: col + 1, y1: row - rows, y2: row + 1 - rows });
         }
       }
     }
   }
 
-  // ── Extrair posições brutas de todas as sessões ───────────────────────────────
+  // ── Extrair posições brutas ───────────────────────────────────────────────────
   const posicoes = [];
   for (const { dadosLog } of sessoesComLog) {
     for (const obj of dadosLog?.objectives ?? []) {
@@ -136,18 +130,12 @@ export function graficoTrajetoria(sessoesComLog, camadas, Plot) {
 
   if (posicoes.length === 0) return aviso("Nenhum dado de movimentação disponível.");
 
-
   // Dimensões visuais
-  const scale = camadas && cols > 0
-    ? Math.min((W - 8) / cols, 320 / rows)
-    : 1;
+  const scale = camadas && cols > 0 ? Math.min((W - 8) / cols, 320 / rows) : 1;
   const W2 = camadas && cols > 0 ? Math.round(cols * scale) : W;
   const H2 = camadas && cols > 0 ? Math.round(rows * scale) : 200;
-
   const xDomain = camadas && cols > 0 ? [0, cols]  : null;
   const yDomain = camadas && rows > 0 ? [-rows, 0] : null;
-
-  // Raio dos pontos: menor quando há muitas posições para não poluir
   const rDot = Math.max(0.8, Math.min(2.5, 200 / posicoes.length));
 
   const chart = Plot.plot({
@@ -157,57 +145,24 @@ export function graficoTrajetoria(sessoesComLog, camadas, Plot) {
     ...(yDomain ? { y: { domain: yDomain, axis: null } } : { y: { axis: null } }),
     style: { background: "transparent", overflow: "visible" },
     marks: [
-      // ── Mapa base ──────────────────────────────────────────────────────────────
-      ...(floorRects.length ? [
-        Plot.rect(floorRects, {
-          x1: "x1", y1: "y1", x2: "x2", y2: "y2",
-          fill: "#f0f0f0",
-          stroke: d => d.areaInterna ? "#cccccc" : "none",
-          strokeWidth: 0.5,
-        }),
-      ] : []),
-      ...(doorRects.length ? [
-        Plot.rect(doorRects, {
-          x1: "x1", y1: "y1", x2: "x2", y2: "y2",
-          fill: "#f0f0f0", stroke: "none",
-        }),
-      ] : []),
-
-      // ── Densidade de movimentação ───────────────────────────────────────────────
-      // Camada 1: curvas finas (resolução alta)
-      Plot.density(posicoes, {
-        x: "x", y: "y",
-        stroke: "steelblue", strokeWidth: 0.75, strokeOpacity: 0.55,
-      }),
-      // Camada 2: 4 faixas de nível mais visíveis
-      Plot.density(posicoes, {
-        x: "x", y: "y",
-        stroke: "steelblue", thresholds: 4,
-        strokeWidth: 1.75, strokeOpacity: 0.9,
-      }),
-      // Camada 3: pontos individuais das posições brutas
-      Plot.dot(posicoes, {
-        x: "x", y: "y",
-        fill: "steelblue", fillOpacity: 0.18,
-        r: rDot,
-      }),
-
-      // ── Máscara reversa: tapa densidade fora do mapa navegável ────────────────
-      ...(maskTiles.length ? [
-        Plot.rect(maskTiles, {
-          x1: "x1", y1: "y1", x2: "x2", y2: "y2",
-          fill: "var(--theme-background)",
-          stroke: "none",
-        }),
-      ] : []),
-
-      // ── Paredes por cima de tudo ────────────────────────────────────────────────
-      ...(wallEdges.length ? [
-        Plot.link(wallEdges, {
-          x1: "x1", y1: "y1", x2: "x2", y2: "y2",
-          stroke: "#3a3a3a", strokeWidth: Math.max(1, scale * 0.07),
-        }),
-      ] : []),
+      ...(floorRects.length ? [Plot.rect(floorRects, {
+        x1: "x1", y1: "y1", x2: "x2", y2: "y2",
+        fill: "#f0f0f0", stroke: d => d.areaInterna ? "#cccccc" : "none", strokeWidth: 0.5,
+      })] : []),
+      ...(doorRects.length ? [Plot.rect(doorRects, {
+        x1: "x1", y1: "y1", x2: "x2", y2: "y2",
+        fill: "#f0f0f0", stroke: "none",
+      })] : []),
+      Plot.density(posicoes, { x: "x", y: "y", stroke: "steelblue", strokeWidth: 0.75, strokeOpacity: 0.55 }),
+      Plot.density(posicoes, { x: "x", y: "y", stroke: "steelblue", thresholds: 4, strokeWidth: 1.75, strokeOpacity: 0.9 }),
+      Plot.dot(posicoes, { x: "x", y: "y", fill: "steelblue", fillOpacity: 0.18, r: rDot }),
+      ...(maskTiles.length ? [Plot.rect(maskTiles, {
+        x1: "x1", y1: "y1", x2: "x2", y2: "y2", fill: "var(--theme-background)", stroke: "none",
+      })] : []),
+      ...(wallEdges.length ? [Plot.link(wallEdges, {
+        x1: "x1", y1: "y1", x2: "x2", y2: "y2",
+        stroke: "#3a3a3a", strokeWidth: Math.max(1, scale * 0.07),
+      })] : []),
     ],
   });
 
@@ -240,10 +195,10 @@ export function graficoTrafego(sessoesComLog, Plot) {
   return Plot.plot({
     width: W,
     height: 180,
-    marginLeft: 28, marginRight: 8, marginTop: 8,
+    marginLeft: 44, marginRight: 8, marginTop: 8,
     marginBottom: labels.length > 5 ? 56 : 36,
     x: { label: null, domain: labels, tickRotate: labels.length > 5 ? -40 : 0 },
-    y: { label: "Colisões", grid: true, ticks: 4 },
+    y: { label: "↑ Colisões", grid: true, ticks: 4, labelAnchor: "center", labelArrow: "none" },
     marks: [
       Plot.barY(dados, { x: "lbl", y: "n", fill: "#e07b54", tip: true }),
       Plot.ruleY([0]),
@@ -293,11 +248,11 @@ export function graficoGiros(sessoesComLog, Plot) {
 
   const chart = Plot.plot({
     width: W,
-    height: 200,
+    height: 416,
     marginLeft: 28, marginRight: 8, marginTop: 8,
     marginBottom: labels.length > 5 ? 56 : 36,
     x: { label: null, domain: labels, tickRotate: labels.length > 5 ? -40 : 0 },
-    y: { label: "Giros", grid: true, ticks: 4 },
+    y: { label: "↑ Giros", grid: true, ticks: 4, labelAnchor: "center", labelArrow: "none" },
     color: { domain: tiposDom, range: cores },
     marks: [
       Plot.barY(dados, {
@@ -326,6 +281,100 @@ export function graficoGiros(sessoesComLog, Plot) {
   return wrap;
 }
 
+// ── Giros Treemap ─────────────────────────────────────────────────────────────
+/**
+ * Versão Treemap do gráfico de Giros.
+ * Agrupa por graus (90°/180°/270°/360°) e divide por direção (←/→).
+ * Layout: colunas proporcionais ao total do grupo, linhas proporcionais à direção.
+ */
+export function graficoGirosTreemap(sessoesComLog) {
+  const GRUPOS = [
+    { graus: "90",  label: "90°",  corBorda: "#1f77b4",
+      dirs: [
+        { tipo: "90° ←",  label: "90° Esquerda",  cor: "#aec7e8" },
+        { tipo: "90° →",  label: "90° Direita",   cor: "#1f77b4" },
+      ]},
+    { graus: "180", label: "180°", corBorda: "#ff7f0e",
+      dirs: [
+        { tipo: "180° ←", label: "180° Esquerda", cor: "#ffbb78" },
+        { tipo: "180° →", label: "180° Direita",  cor: "#ff7f0e" },
+      ]},
+    { graus: "270", label: "270°", corBorda: "#2ca02c",
+      dirs: [
+        { tipo: "270° ←", label: "270° Esquerda", cor: "#98df8a" },
+        { tipo: "270° →", label: "270° Direita",  cor: "#2ca02c" },
+      ]},
+    { graus: "360", label: "360°", corBorda: "#9467bd",
+      dirs: [
+        { tipo: "360° ←", label: "360° Esquerda", cor: "#c5b0d5" },
+        { tipo: "360° →", label: "360° Direita",  cor: "#9467bd" },
+      ]},
+  ];
+
+  // Agregar contagens de todas as sessões
+  const contagem = new Map(GRUPOS.flatMap(g => g.dirs).map(d => [d.tipo, 0]));
+  for (const { dadosLog } of sessoesComLog) {
+    for (const g of detectarGiros(dadosLog)) {
+      const key = `${g.graus}° ${g.direcao === 0 ? "←" : "→"}`;
+      if (contagem.has(key)) contagem.set(key, contagem.get(key) + 1);
+    }
+  }
+
+  const total = [...contagem.values()].reduce((a, b) => a + b, 0);
+  if (total === 0) return aviso("Nenhum giro detectado nessas sessões.");
+
+  const wrap = document.createElement("div");
+  wrap.style.cssText = "display:flex;flex-direction:row;width:100%;height:416px;gap:3px;";
+
+  for (const grupo of GRUPOS) {
+    const groupTotal = grupo.dirs.reduce((s, d) => s + (contagem.get(d.tipo) ?? 0), 0);
+    if (groupTotal === 0) continue;
+
+    const groupPct = groupTotal / total;
+
+    // Container do grupo (borda colorida + label)
+    const groupDiv = document.createElement("div");
+    groupDiv.style.cssText = `flex:${groupPct} 1 0;display:flex;flex-direction:column;border:2px solid ${grupo.corBorda};border-radius:4px;overflow:hidden;min-width:0;`;
+
+    // Label do grupo
+    const lbl = document.createElement("div");
+    lbl.style.cssText = `font-size:.7rem;font-weight:700;color:white;background:${grupo.corBorda};padding:3px 6px;flex-shrink:0;`;
+    lbl.textContent = grupo.label;
+    groupDiv.append(lbl);
+
+    // Tiles de direção empilhados verticalmente
+    const tilesDiv = document.createElement("div");
+    tilesDiv.style.cssText = "display:flex;flex-direction:column;flex:1;gap:1px;";
+
+    for (const d of grupo.dirs) {
+      const cnt = contagem.get(d.tipo) ?? 0;
+      if (cnt === 0) continue;
+      const dirPct = cnt / groupTotal;
+      const pctTotal = (cnt / total * 100).toFixed(1);
+
+      const tile = document.createElement("div");
+      tile.style.cssText = `flex:${dirPct} 1 0;background:${d.cor};display:flex;flex-direction:column;justify-content:flex-start;align-items:flex-start;padding:5px 7px;overflow:hidden;box-sizing:border-box;min-height:18px;`;
+      tile.title = `${d.label}: ${cnt} (${pctTotal}%)`;
+
+      const tNome = document.createElement("span");
+      tNome.style.cssText = "font-size:.68rem;font-weight:700;color:rgba(0,0,0,.8);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;";
+      tNome.textContent = d.label;
+
+      const tVal = document.createElement("span");
+      tVal.style.cssText = "font-size:.63rem;color:rgba(0,0,0,.65);";
+      tVal.textContent = `${cnt}  ·  ${pctTotal}%`;
+
+      tile.append(tNome, tVal);
+      tilesDiv.append(tile);
+    }
+
+    groupDiv.append(tilesDiv);
+    wrap.append(groupDiv);
+  }
+
+  return wrap;
+}
+
 // ── Comparação ────────────────────────────────────────────────────────────────
 /**
  * Três gráficos independentes (Precisão, Objetivos, Fluidez), um por linha.
@@ -346,8 +395,12 @@ export function graficoComparacao(sessoesDoMapaComMetricas, idLogAtual, Plot) {
   const lblsDomain = comMetricas.map(s => `#${s.sessao.id_log}`);
   const mbottom    = lblsDomain.length > 6 ? 52 : 30;
 
+  const yLabel = document.createElement("div");
+  yLabel.style.cssText = "display:flex;align-items:center;justify-content:center;writing-mode:vertical-rl;transform:rotate(180deg);font-size:.65rem;color:var(--theme-foreground-muted);padding:0 2px;flex-shrink:0;";
+  yLabel.textContent = "%";
+
   const wrap = document.createElement("div");
-  wrap.style.cssText = "display:flex;flex-direction:column;gap:12px;";
+  wrap.style.cssText = "display:flex;flex-direction:column;gap:12px;flex:1;";
 
   METRICAS.forEach((metrica, mi) => {
     const cor   = CORES[mi];
@@ -376,7 +429,7 @@ export function graficoComparacao(sessoesDoMapaComMetricas, idLogAtual, Plot) {
         // só mostrar ticks no último gráfico
         axis: mi === METRICAS.length - 1 ? "bottom" : null,
       },
-      y: { label: "%", domain: [0, 100], grid: true, ticks: 3 },
+      y: { label: null, domain: [0, 100], grid: true, ticks: 3 },
       marks: [
         Plot.line(rows, {
           x: "lbl", y: "valor",
@@ -407,7 +460,11 @@ export function graficoComparacao(sessoesDoMapaComMetricas, idLogAtual, Plot) {
   nota.textContent = `● preenchido = #${idLogAtual} (sessão atual) · tracejado = média`;
   wrap.append(nota);
 
-  return wrap;
+  const outer = document.createElement("div");
+  outer.style.cssText = "display:flex;align-items:stretch;gap:4px;min-height:416px;";
+  outer.append(yLabel, wrap);
+
+  return outer;
 }
 
 // ── Eficiência da Rota ────────────────────────────────────────────────────────
@@ -541,7 +598,7 @@ export function graficoEvolucaoLongitudinal(sessoesComLog, idLogAtual, Plot) {
       domain: lblsDomain,
       tickRotate: lblsDomain.length > 6 ? -40 : 0,
     },
-    y: { label: "Quantidade de Ocorrências", grid: true },
+    y: { label: "↑ Quantidade de Ocorrências", grid: true, labelAnchor: "center", labelArrow: "none" },
     color: {
       domain: ["Colisões c/ Obstáculos", "Giros de Desorientação"],
       range:  ["#e41a1c", "#ff7f00"],

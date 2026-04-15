@@ -136,8 +136,20 @@ toc: false
   .bar-fill  { height:100%; border-radius:3px; background:var(--om-accent); transition:width .4s; }
   .bar-count { width:36px; text-align:right; font-size:.78rem; color:var(--theme-foreground-muted); }
 
-  /* ── Sessões recentes ─────────────────────────── */
+  /* ── Detalhes da atividade ────────────────────── */
   .session-list { display:flex; flex-direction:column; gap:.3rem; }
+  .mapa-group { margin-bottom:.2rem; }
+  .mapa-header {
+    display:flex; align-items:center; gap:.65rem;
+    padding:.4rem .65rem; border-radius:6px;
+    border:1px solid transparent; font-size:.82rem;
+  }
+  .mapa-header:hover { background:var(--theme-background-alt); }
+  .mapa-sessoes { display:flex; flex-direction:column; padding:.1rem .65rem .2rem 2.1rem; }
+  .mapa-sessao-row { display:flex; align-items:center; gap:.65rem; font-size:.78rem; color:var(--theme-foreground-muted); padding:.18rem 0; border-bottom:1px solid var(--theme-foreground-faintest); }
+  .mapa-sessao-row:last-child { border-bottom:none; }
+  .si-count { color:var(--theme-foreground-muted); font-size:.76rem; flex-shrink:0; }
+  .si-id { color:var(--theme-foreground-faint); font-size:.72rem; }
   .session-item {
     display:flex; align-items:center; gap:.65rem;
     padding:.4rem .65rem; border-radius:6px;
@@ -275,9 +287,11 @@ const chkMoveis   = html`<input type="checkbox" checked>`;  // furniture/eletron
 
 // Re-renderiza os mapas quando qualquer checkbox de camada mudar
 [chkObjetos, chkMoveis].forEach(c => c.addEventListener("change", () => {
+  const sy = window.scrollY;
   if (giroState.camadas) renderizarMapaGiros();
   if (giroState.camadas) renderizarHeatmap();
   if (giroState.camadas) renderizarColisao();
+  requestAnimationFrame(() => window.scrollTo({ top: sy, behavior: "instant" }));
 }));
 
 const selSessao1  = document.createElement("select"); selSessao1.className = "filtro-sessao select";
@@ -366,8 +380,6 @@ function popularFiltroSessaoSelect() {
   });
 
   filtroSessaoSelect.replaceChildren();
-  const optAll = document.createElement("option"); optAll.value = ""; optAll.textContent = "Todas as sessões";
-  filtroSessaoSelect.append(optAll);
   for (const { sessao: s } of pool) {
     const op  = document.createElement("option");
     op.value  = s.id_log;
@@ -375,6 +387,10 @@ function popularFiltroSessaoSelect() {
     const concl = s.cleared_map ? "✓" : "✗";
     op.textContent = `#${s.id_log} — ${s.nome_mapa} (${data}) ${concl}`;
     filtroSessaoSelect.append(op);
+  }
+  // Se não há sessão selecionada, seleciona a primeira disponível
+  if (estado.filtroSessaoId === null && pool.length > 0) {
+    estado.filtroSessaoId = pool[0].sessao.id_log;
   }
   filtroSessaoSelect.value = estado.filtroSessaoId ?? "";
 }
@@ -565,17 +581,21 @@ function _renderizarMapaGiros() {
         x1: "x1", y1: "y1", x2: "x2", y2: "y2",
         fill: "#d4a56a", fillOpacity: 0.75, stroke: "#b8864e", strokeWidth: 0.5,
       })] : [],
-      // Objetivos da cena: área sombreada + número centralizado
+      // Objetivos da cena: contorno verde (sem fill) — tamanho reduzido 50%
       ...interRects.length ? [
-        Plot.rect(interRects, {
+        Plot.rect(interRects.map(r => {
+          const mx = (r.x1 + r.x2) / 2, my = (r.y1 + r.y2) / 2;
+          const hw = (r.x2 - r.x1) * 0.25, hh = (r.y2 - r.y1) * 0.25;
+          return { ...r, x1: mx - hw, x2: mx + hw, y1: my - hh, y2: my + hh };
+        }), {
           x1: "x1", y1: "y1", x2: "x2", y2: "y2",
-          fill: "#5ba85b", fillOpacity: 0.25,
+          fill: "none",
           stroke: "#5ba85b", strokeWidth: 1.2,
         }),
         Plot.text(interRects, {
           x: "cx", y: "cy",
           text: d => String(d.idx),
-          fontSize: Math.max(7, scale * 0.5),
+          fontSize: Math.max(5, scale * 0.25),
           fill: "#2d6a2d",
           fontWeight: "bold",
           textAnchor: "middle",
@@ -748,11 +768,11 @@ function _renderizarMapaGiros() {
       row.style.cssText = "display:flex;align-items:center;gap:6px;";
 
       const badge = document.createElement("div");
-      badge.style.cssText = `width:18px;height:18px;border-radius:4px;flex-shrink:0;
-        background:rgba(91,168,91,.25);border:1.5px solid #5ba85b;
+      badge.style.cssText = `width:14px;height:14px;border-radius:3px;flex-shrink:0;
+        background:none;border:1.5px solid #5ba85b;
         display:flex;align-items:center;justify-content:center;`;
       const num = document.createElement("span");
-      num.style.cssText = "font-size:.68rem;font-weight:800;color:#2d6a2d;line-height:1;";
+      num.style.cssText = "font-size:.6rem;font-weight:800;color:#2d6a2d;line-height:1;";
       num.textContent = obj.idx;
       badge.append(num);
 
@@ -818,6 +838,7 @@ function _renderizarHeatmap() {
 
   // interactive_elements numerados (responde ao chkObjetos)
   const mostrarObjetos = chkObjetos.checked;
+  const mostrarMoveis  = chkMoveis.checked;
   const allInterFeatures = getCamada("interactive_elements")?.geojson.features ?? [];
   const interRects = mostrarObjetos
     ? allInterFeatures.map((f, i) => {
@@ -825,6 +846,11 @@ function _renderizarHeatmap() {
         return { ...r, cx: (r.x1 + r.x2) / 2, cy: (r.y1 + r.y2) / 2, idx: i + 1 };
       })
     : [];
+  const furnRects = mostrarMoveis ? [
+    ...(getCamada("furniture")?.geojson.features  ?? []),
+    ...(getCamada("eletronics")?.geojson.features ?? []),
+    ...(getCamada("utensils")?.geojson.features   ?? []),
+  ].map(polyToRect) : [];
 
   // ── Dimensões ─────────────────────────────────────────────────────────────
   const LEGENDA_W = 80; // largura reservada para a legenda lateral
@@ -857,21 +883,30 @@ function _renderizarHeatmap() {
         stroke: "none",
         title: d => `${d.count} ação${d.count > 1 ? "ões" : ""}`,
       }),
+      ...furnRects.length ? [Plot.rect(furnRects, {
+        x1: "x1", y1: "y1", x2: "x2", y2: "y2",
+        fill: "#b0b0b0", fillOpacity: 0.35,
+        stroke: "#888", strokeWidth: 0.7,
+      })] : [],
       Plot.link(wallEdges, {
         x1: "x1", y1: "y1", x2: "x2", y2: "y2",
         stroke: "#3a3a3a", strokeWidth: Math.max(1, scale * 0.07),
       }),
-      // Objetivos da cena: contorno + número
+      // Objetivos da cena: contorno verde (sem fill) — tamanho reduzido 50%
       ...interRects.length ? [
-        Plot.rect(interRects, {
+        Plot.rect(interRects.map(r => {
+          const mx = (r.x1 + r.x2) / 2, my = (r.y1 + r.y2) / 2;
+          const hw = (r.x2 - r.x1) * 0.25, hh = (r.y2 - r.y1) * 0.25;
+          return { ...r, x1: mx - hw, x2: mx + hw, y1: my - hh, y2: my + hh };
+        }), {
           x1: "x1", y1: "y1", x2: "x2", y2: "y2",
-          fill: "#5ba85b", fillOpacity: 0.20,
+          fill: "none",
           stroke: "#5ba85b", strokeWidth: 1.2,
         }),
         Plot.text(interRects, {
           x: "cx", y: "cy",
           text: d => String(d.idx),
-          fontSize: Math.max(7, scale * 0.5),
+          fontSize: Math.max(5, scale * 0.25),
           fill: "#2d6a2d", fontWeight: "bold",
           textAnchor: "middle", dy: "0.35em",
           title: "nomeAmigavel",
@@ -961,11 +996,11 @@ function _renderizarHeatmap() {
       row.style.cssText = "display:flex;align-items:center;gap:6px;";
 
       const badge = document.createElement("div");
-      badge.style.cssText = `width:18px;height:18px;border-radius:4px;flex-shrink:0;
-        background:rgba(91,168,91,.25);border:1.5px solid #5ba85b;
+      badge.style.cssText = `width:14px;height:14px;border-radius:3px;flex-shrink:0;
+        background:none;border:1.5px solid #5ba85b;
         display:flex;align-items:center;justify-content:center;`;
       const num = document.createElement("span");
-      num.style.cssText = "font-size:.68rem;font-weight:800;color:#2d6a2d;line-height:1;";
+      num.style.cssText = "font-size:.6rem;font-weight:800;color:#2d6a2d;line-height:1;";
       num.textContent = obj.idx;
       badge.append(num);
 
@@ -992,31 +1027,19 @@ function _renderizarHeatmap() {
 }
 
 // ── Mapa de Colisão — checkboxes internos ─────────────────────────────────
-const chkColisaoPoints  = Object.assign(document.createElement("input"),  { type: "checkbox" }); chkColisaoPoints.checked  = true;
-const chkObjetivosCol   = Object.assign(document.createElement("input"),  { type: "checkbox" }); chkObjetivosCol.checked   = true;
-[chkColisaoPoints, chkObjetivosCol].forEach(c => c.addEventListener("change", () => {
-  if (giroState.camadas) renderizarColisao();
-}));
+const chkColisaoPoints  = Object.assign(document.createElement("input"),  { type: "checkbox", tabIndex: -1 }); chkColisaoPoints.checked  = true;
+const chkObjetivosCol   = { checked: true };
+chkColisaoPoints.addEventListener("change", () => {
+  if (giroState.camadas) {
+    const sy = window.scrollY;
+    renderizarColisao();
+    requestAnimationFrame(() => window.scrollTo({ top: sy, behavior: "instant" }));
+  }
+});
 
 function renderizarColisao() { try { _renderizarColisao(); } catch(e) { console.error("renderizarColisao:", e); } }
 function _renderizarColisao() {
   colisaoContainer.replaceChildren();
-
-  // ── Barra de checkboxes ───────────────────────────────────────────────────
-  const chkBar = document.createElement("div");
-  chkBar.style.cssText = "display:flex;gap:16px;margin-bottom:8px;font-size:.75rem;color:var(--theme-foreground-muted);user-select:none;";
-
-  const mkChkLabel = (chk, text) => {
-    const lbl = document.createElement("label");
-    lbl.style.cssText = "display:flex;align-items:center;gap:5px;cursor:pointer;";
-    lbl.append(chk, text);
-    return lbl;
-  };
-  chkBar.append(
-    mkChkLabel(chkColisaoPoints, "Pontos de Colisão"),
-    mkChkLabel(chkObjetivosCol,  "Pontos de Objetivos"),
-  );
-  colisaoContainer.append(chkBar);
 
   const { camadas, cols, rows, dadosLog } = giroState;
 
@@ -1054,13 +1077,22 @@ function _renderizarColisao() {
     x1: p1[0], y1: p1[1], x2: p2[0], y2: p2[1],
   }));
 
+  const mostrarObjetosCol = chkObjetos.checked;
+  const mostrarMoveisCol  = chkMoveis.checked;
   const allInterFeatures = getCamada("interactive_elements")?.geojson.features ?? [];
-  const interCenters = chkObjetivosCol.checked
+  const interRectsCol = mostrarObjetosCol
     ? allInterFeatures.map((f, i) => {
         const r = polyToRect(f);
-        return { cx: (r.x1 + r.x2) / 2, cy: (r.y1 + r.y2) / 2, idx: i + 1, ...f.properties };
+        const mx = (r.x1 + r.x2) / 2, my = (r.y1 + r.y2) / 2;
+        const hw = (r.x2 - r.x1) * 0.25, hh = (r.y2 - r.y1) * 0.25;
+        return { x1: mx - hw, x2: mx + hw, y1: my - hh, y2: my + hh, cx: mx, cy: my, idx: i + 1, ...f.properties };
       })
     : [];
+  const furnRectsCol = mostrarMoveisCol ? [
+    ...(getCamada("furniture")?.geojson.features  ?? []),
+    ...(getCamada("eletronics")?.geojson.features ?? []),
+    ...(getCamada("utensils")?.geojson.features   ?? []),
+  ].map(polyToRect) : [];
 
   // ── Dimensões ─────────────────────────────────────────────────────────────
   const LEGENDA_W = 140;
@@ -1089,6 +1121,11 @@ function _renderizarColisao() {
         x1: "x1", y1: "y1", x2: "x2", y2: "y2",
         fill: "#f0f0f0", stroke: "none",
       }),
+      ...furnRectsCol.length ? [Plot.rect(furnRectsCol, {
+        x1: "x1", y1: "y1", x2: "x2", y2: "y2",
+        fill: "#b0b0b0", fillOpacity: 0.35,
+        stroke: "#888", strokeWidth: 0.7,
+      })] : [],
       // Trajetórias ortogonais
       ...segmentos.length ? [Plot.link(segmentos, {
         x1: "x1", y1: "y1", x2: "x2", y2: "y2",
@@ -1097,32 +1134,22 @@ function _renderizarColisao() {
         strokeLinecap: "round",
         title: d => `${d.count} travessia${d.count > 1 ? "s" : ""}`,
       })] : [],
-      // Nós: ponto azul preenchido em cada tile visitado
-      Plot.dot(visitPoints, {
-        x: "geoX", y: "geoY",
-        r: dotR,
-        fill: "#4a90d9",
-        stroke: "#1a5fa8",
-        strokeWidth: 1,
-      }),
       // Paredes (sobre tudo exceto colisões e objetivos)
       Plot.link(wallEdges, {
         x1: "x1", y1: "y1", x2: "x2", y2: "y2",
         stroke: "#3a3a3a", strokeWidth: Math.max(1.5, scale * 0.07),
       }),
-      // Objetivos: círculo branco com contorno verde nos centros
-      ...interCenters.length ? [
-        Plot.dot(interCenters, {
-          x: "cx", y: "cy",
-          r: dotR * 1.4,
-          fill: "white",
-          stroke: "#5ba85b",
-          strokeWidth: 1.5,
+      // Objetivos: rect sem fill com contorno verde — tamanho reduzido 50%
+      ...interRectsCol.length ? [
+        Plot.rect(interRectsCol, {
+          x1: "x1", y1: "y1", x2: "x2", y2: "y2",
+          fill: "none",
+          stroke: "#5ba85b", strokeWidth: 1.2,
         }),
-        Plot.text(interCenters, {
+        Plot.text(interRectsCol, {
           x: "cx", y: "cy",
           text: d => String(d.idx),
-          fontSize: Math.max(6, scale * 0.4),
+          fontSize: Math.max(5, scale * 0.25),
           fill: "#2d6a2d", fontWeight: "bold",
           textAnchor: "middle", dy: "0.35em",
         }),
@@ -1199,8 +1226,8 @@ function _renderizarColisao() {
       const row = document.createElement("div");
       row.style.cssText = "display:flex;align-items:center;gap:5px;";
       const badge = document.createElement("div");
-      badge.style.cssText = `width:16px;height:16px;border-radius:50%;flex-shrink:0;
-        background:white;border:1.5px solid #5ba85b;
+      badge.style.cssText = `width:14px;height:14px;border-radius:3px;flex-shrink:0;
+        background:none;border:1.5px solid #5ba85b;
         display:flex;align-items:center;justify-content:center;`;
       const num = document.createElement("span");
       num.style.cssText = "font-size:.6rem;font-weight:800;color:#2d6a2d;line-height:1;";
@@ -1323,7 +1350,7 @@ function _renderizarLateralidade() {
 
   // ── Barra de proporção ────────────────────────────────────────────────────
   const barWrap = document.createElement("div");
-  barWrap.style.cssText = "margin-bottom:10px;";
+  barWrap.style.cssText = "margin-bottom:40px;";
 
   const barTitle = document.createElement("div");
   barTitle.style.cssText = "font-size:.7rem;text-align:center;color:var(--theme-foreground-muted);margin-bottom:4px;";
@@ -1347,13 +1374,7 @@ function _renderizarLateralidade() {
     position:absolute;left:50%;top:-4px;bottom:-4px;
     width:2px;margin-left:-1px;
     background:#333;opacity:0.7;pointer-events:none;`;
-  const marca50Lbl = document.createElement("div");
-  marca50Lbl.style.cssText = `
-    position:absolute;left:50%;top:-16px;
-    transform:translateX(-50%);
-    font-size:.58rem;font-weight:700;color:#333;white-space:nowrap;`;
-  marca50Lbl.textContent = "50%";
-  barOuter.append(bar, marca50, marca50Lbl);
+  barOuter.append(bar, marca50);
 
   // Escala de % abaixo da barra
   const barScale = document.createElement("div");
@@ -1370,7 +1391,7 @@ function _renderizarLateralidade() {
 
   // ── Silhueta + gráfico lado a lado ───────────────────────────────────────
   const row = document.createElement("div");
-  row.style.cssText = "display:flex;align-items:flex-start;gap:16px;";
+  row.style.cssText = "display:flex;align-items:flex-start;gap:16px;margin-top:40px;";
 
   // Silhueta com labels DIREITA / ESQUERDA
   const figWrap = document.createElement("div");
@@ -1643,26 +1664,50 @@ const COR_SESSAO = ["#4a90e2","#5ba85b","#e07b54","#c9a227","#9b59b6"];
 
 function atualizarSessionList(filtradas = estado.analises) {
   sessionListEl.replaceChildren();
-  const sessoes = filtradas.map(a => a.sessao);
-  if (!sessoes.length) {
+  // Usar todas as sessões do aluno para agrupar por mapa (não só as 10 com análise)
+  const todasSessoes = estado.sessoes ?? [];
+  if (!todasSessoes.length) {
     const p = document.createElement("p"); p.className = "empty-hint";
     p.textContent = "Nenhuma sessão encontrada."; sessionListEl.append(p); return;
   }
-  sessoes.slice(0, 8).forEach((s, i) => {
-    const item = document.createElement("div");
-    item.className = "session-item" + (estado.sessaoAtiva === s.id_log ? " ativa" : "");
-    item.innerHTML = `
-      <div class="si-dot" style="background:${COR_SESSAO[i % COR_SESSAO.length]}"></div>
-      <span class="si-nome">${s.nome_mapa}</span>
-      <span class="si-data">${s.data?.slice(0,10) ?? "—"}</span>
-      <a class="si-link" href="/visualizacao/perfil-detalhado?id=${estado.idAluno}&log=${s.id_log}">→</a>`;
-    item.addEventListener("click", e => {
-      if (e.target.tagName === "A") return;
-      estado.sessaoAtiva = estado.sessaoAtiva === s.id_log ? null : s.id_log;
-      atualizarSessionList();
+
+  // Agrupar por nome_mapa mantendo ordem de aparecimento
+  const grupos = new Map();
+  for (const s of todasSessoes) {
+    const key = s.nome_mapa ?? "—";
+    if (!grupos.has(key)) grupos.set(key, []);
+    grupos.get(key).push(s);
+  }
+
+  let idx = 0;
+  for (const [nomeMapa, sessoesDoMapa] of grupos) {
+    const cor = COR_SESSAO[idx % COR_SESSAO.length];
+    const qtd = sessoesDoMapa.length;
+
+    const group = document.createElement("div");
+    group.className = "mapa-group";
+
+    const header = document.createElement("div");
+    header.className = "mapa-header";
+    header.innerHTML = `
+      <div class="si-dot" style="background:${cor}"></div>
+      <span class="si-nome">${nomeMapa}</span>
+      <span class="si-count">${qtd} sessão${qtd !== 1 ? "ões" : ""}</span>
+      <a class="si-link" href="/visualizacao/perfil-detalhado?aluno=${estado.idAluno}&mapa=${encodeURIComponent(nomeMapa)}">→</a>`;
+
+    const subList = document.createElement("div");
+    subList.className = "mapa-sessoes";
+    sessoesDoMapa.forEach(s => {
+      const row = document.createElement("div");
+      row.className = "mapa-sessao-row";
+      row.innerHTML = `<span class="si-data">${s.data?.slice(0,10) ?? "—"}</span><span class="si-id">#${s.id_log}</span>`;
+      subList.append(row);
     });
-    sessionListEl.append(item);
-  });
+
+    group.append(header, subList);
+    sessionListEl.append(group);
+    idx++;
+  }
 }
 
 // ── Atualizar avatar do seletor ───────────────────────────────────────────
@@ -1743,11 +1788,7 @@ const colEsquerda = html`<div class="col-esquerda">
     <div class="painel-titulo">Filtro de Sessões</div>
     <div class="painel-corpo">
       <div class="filtro-sessoes-row">
-        <label>Mapa</label>
-        ${filtroMapaSelect}
-      </div>
-      <div class="filtro-sessoes-row" style="margin-top:.6rem">
-        <label>Conclusão</label>
+        <label>Tipos de sessão</label>
         <div class="filtro-concl-btns">
           ${filtroBtnTodas}${filtroBtnConcl}${filtroBtnNaoConcl}
         </div>
@@ -1762,15 +1803,8 @@ const colEsquerda = html`<div class="col-esquerda">
 
   <!-- Filtros -->
   <div class="painel">
-    <div class="painel-titulo">Select Filters</div>
+    <div class="painel-titulo">Filtros dos mapas</div>
     <div class="painel-corpo">
-
-      <div class="filtro-titulo">Eventos</div>
-      <div class="filtro-check">
-        <label>${chkInicio}   <span class="filtro-icon">＋</span> Início</label>
-        <label>${chkColisoes} <span class="filtro-icon">○</span> Colisões</label>
-        <label>${chkObjetivos}<span class="filtro-icon">•</span> Objetivos</label>
-      </div>
 
       <div class="filtro-titulo">Camadas do Mapa</div>
       <div class="filtro-check">
@@ -1778,42 +1812,17 @@ const colEsquerda = html`<div class="col-esquerda">
         <label>${chkMoveis} <span class="filtro-icon">▭</span> Móveis / objetos</label>
       </div>
 
-      <hr class="filtro-divisor">
-      <div class="filtro-titulo">Sessões</div>
-      <div class="filtro-sessao">
-        <label>Comparar sessão A</label>
-        ${selSessao1}
-      </div>
-      <div class="filtro-sessao">
-        <label>Comparar sessão B</label>
-        ${selSessao2}
-      </div>
-      <div class="filtro-sessao">
-        <label>Sessão de referência</label>
-        ${selSessao3}
-      </div>
-
-      <hr class="filtro-divisor">
-      <div class="filtro-range">
-        <label>Intervalo de tempo (Range 1)</label>
-        ${rangeA}
-      </div>
-      <div class="filtro-range">
-        <label>Intervalo de sessão (Range 2)</label>
-        ${rangeB}
+      <div class="filtro-titulo" style="margin-top:.75rem">Colisão</div>
+      <div class="filtro-check">
+        <label>${chkColisaoPoints}<span class="filtro-icon">○</span> Pontos de Colisão</label>
       </div>
     </div>
   </div>
 
-  <!-- Stats rápidas -->
+  <!-- Sessões recentes -->
   <div class="painel">
-    <div class="painel-titulo">Resumo</div>
-    <div class="painel-corpo">
-      <div class="quick-stats">
-        ${qsTotalSessoes}${qsComAnalise}
-        ${qsMapasDistintos}${qsMediaGeral}
-      </div>
-    </div>
+    <div class="painel-titulo">Detalhes da atividade</div>
+    <div class="painel-corpo">${sessionListEl}</div>
   </div>
 
 </div>`;
@@ -1852,15 +1861,6 @@ const colDireita = html`<div class="col-direita">
   <div class="painel">
     <div class="painel-titulo">Análise Comportamental</div>
     <div class="painel-corpo">${comportamentalContainer}</div>
-  </div>
-
-
-
-
-  <!-- Sessões recentes -->
-  <div class="painel">
-    <div class="painel-titulo">Sessões Recentes</div>
-    <div class="painel-corpo">${sessionListEl}</div>
   </div>
 
 </div>`;

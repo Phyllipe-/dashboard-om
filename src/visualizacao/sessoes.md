@@ -90,7 +90,7 @@ if (!sessoes.length) {
     const btnVer = document.createElement("a");
     btnVer.href = `/visualizacao/sessao?id=${s.id_log}&aluno=${id_aluno}`;
     btnVer.className = "btn-ver";
-    btnVer.textContent = "Ver detalhes";
+    btnVer.textContent = "Ver Resumo";
 
     const tdId    = document.createElement("td"); tdId.textContent = `#${s.id_log}`; tdId.style.color = "var(--theme-foreground-muted)";
     const tdMapa  = document.createElement("td"); tdMapa.textContent = s.nome_mapa; tdMapa.style.fontWeight = "600";
@@ -107,11 +107,9 @@ if (!sessoes.length) {
 
 // ── Render ────────────────────────────────────────────────────────────────
 const nomeAluno = aluno?.nome_completo ?? `Aluno #${id_aluno}`;
-const voltar = `/visualizacao/perfil-aluno?id=${id_aluno}`;
 
 display(html`<div>
   <div class="page-header">
-    <a class="btn-back" href="${voltar}">← Voltar</a>
     <h1>Sessões — ${nomeAluno}</h1>
   </div>
   <div class="stats-bar">${statTotal}${statConc}${statMapas}</div>
@@ -128,5 +126,8 @@ display(html`<div>
     </thead>
     ${tbody}
   </table>
+  <div style="margin-top:1.5rem">
+    <a class="btn-back" href="/visualizacao/alunos">← Voltar</a>
+  </div>
 </div>`);
 ```

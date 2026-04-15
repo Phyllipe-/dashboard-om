@@ -47,9 +47,8 @@ toc: false
 
   /* ── Link para perfil ───────────────────────── */
   .card-footer { padding:.5rem 1rem .75rem; display:flex; justify-content:flex-end; gap:.5rem; }
-  .btn-ver { font-size:.78rem; font-weight:600; padding:.28rem .75rem; border-radius:6px; background:#1e293b; color:#fff; text-decoration:none; }
-  .btn-sessao { font-size:.78rem; font-weight:600; padding:.28rem .75rem; border-radius:6px; border:1px solid var(--theme-foreground-faint); background:transparent; color:var(--theme-foreground); text-decoration:none; cursor:pointer; }
-  .btn-ver:hover { opacity:.82; }
+  .btn-ver, .btn-sessao { font-size:.78rem; font-weight:600; padding:.28rem .75rem; border-radius:6px; background:transparent; color:var(--theme-foreground); text-decoration:none; border:1px solid var(--theme-foreground-faint); cursor:pointer; }
+  .btn-ver:hover, .btn-sessao:hover { background:var(--theme-background-alt); }
 
   /* ── Header clicável ─────────────────────────── */
   .card-header-link {
@@ -121,18 +120,12 @@ toc: false
     display:flex; justify-content:space-between; align-items:center;
     border-top:1px solid var(--theme-foreground-faintest);
   }
-  .btn-primary-modal {
-    padding:.5rem 1.1rem; border-radius:8px; font-size:.9rem; font-weight:700;
-    background:#1e293b; color:#fff;
-    text-decoration:none; border:none; cursor:pointer;
-  }
-  .btn-primary-modal:hover { opacity:.82; }
-  .btn-ghost-modal {
-    padding:.5rem 1rem; border-radius:8px; font-size:.9rem; font-weight:600;
+  .btn-primary-modal, .btn-ghost-modal {
+    padding:.5rem 1.1rem; border-radius:8px; font-size:.9rem; font-weight:600;
     border:1px solid var(--theme-foreground-faint); background:transparent;
-    color:var(--theme-foreground); cursor:pointer;
+    color:var(--theme-foreground); text-decoration:none; cursor:pointer;
   }
-  .btn-ghost-modal:hover { background:var(--theme-background-alt); }
+  .btn-primary-modal:hover, .btn-ghost-modal:hover { background:var(--theme-background-alt); }
 </style>
 
 ```js
