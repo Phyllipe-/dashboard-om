@@ -193,6 +193,47 @@ const sessoesDoMapaComMetricas = gruposPorMapa.flatMap(g => g.metricas);
 const camadas              = gruposPorMapa[0]?.camadas ?? null;
 const dadosLog             = null; // não mais usado
 
+// Sessões do mesmo mapa (excluindo a atual, que já foi buscada)
+const sessoesMesmoMapa = sessoes.filter(
+  s => s.nome_mapa === sessaoAtual?.nome_mapa && s.id_log !== idLog
+);
+
+// Buscar logs e métricas de todas as sessões do mesmo mapa em paralelo
+const sessoesDoMapa = [sessaoAtual, ...sessoesMesmoMapa].filter(Boolean);
+const [sessoesOutrasComLog, sessoesDoMapaComMetricas] = await Promise.all([
+  Promise.all(
+    sessoesMesmoMapa.slice(0, 15).map(s =>
+      fetchSessao(s.id_log)
+        .then(r => r.dados_log ?? null)
+        .catch(() => null)
+    )
+  ),
+  Promise.all(
+    sessoesDoMapa.map(s =>
+      fetchMetricas(s.id_log)
+        .then(r => ({ sessao: s, metricas: r.metricas ?? null }))
+        .catch(() => ({ sessao: s, metricas: null }))
+    )
+  ),
+]);
+
+// Pares { sessao, dadosLog } em ordem cronológica (mais antiga primeiro)
+const sessoesComLog = [
+  { sessao: sessaoAtual, dadosLog },
+  ...sessoesMesmoMapa.slice(0, 15).map((s, i) => ({ sessao: s, dadosLog: sessoesOutrasComLog[i] })),
+]
+  .filter(s => s.sessao && s.dadosLog)
+  .sort((a, b) => a.sessao.id_log - b.sessao.id_log);
+
+// Para o gráfico de evolução: todas as sessões do aluno (não só do mapa)
+const sessoesComMetricas = await Promise.all(
+  sessoes.slice(0, 20).map(s =>
+    fetchMetricas(s.id_log)
+      .then(r => ({ sessao: s, metricas: r.metricas ?? null }))
+      .catch(() => ({ sessao: s, metricas: null }))
+  )
+);
+
 // ── Tipos de análise ──────────────────────────────────────────────────────────
 const TIPOS = [
   { key: "lateralidade",         label: "Lateralidade",   desc: "Preferência e padrão lateral de movimento" },
