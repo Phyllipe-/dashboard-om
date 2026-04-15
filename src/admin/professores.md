@@ -7,17 +7,17 @@ toc: false
   .page-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:1.5rem; flex-wrap:wrap; gap:.75rem; }
   .page-header h1 { margin:0; font-size:1.5rem; }
   .btn { padding:.5rem 1.1rem; border-radius:6px; font-size:.9rem; font-weight:600; cursor:pointer; border:none; text-decoration:none; display:inline-block; }
-  .btn-primary { background:var(--theme-foreground); color:var(--theme-background); }
+  .btn-primary { background:#1e293b; color:#fff; }
   .btn-primary:hover { opacity:.82; }
   .search-input { padding:.4rem .75rem; border:1px solid var(--theme-foreground-faint); border-radius:6px; background:var(--theme-background); color:var(--theme-foreground); font-size:.9rem; outline:none; min-width:220px; }
-  .search-input:focus { border-color:#4a90e2; }
+  .search-input:focus { border-color:var(--om-accent); }
   .profs-table { width:100%; border-collapse:collapse; font-size:.9rem; }
   .profs-table th { text-align:left; padding:.6rem .75rem; border-bottom:2px solid var(--theme-foreground-faint); color:var(--theme-foreground-muted); font-weight:600; font-size:.8rem; text-transform:uppercase; letter-spacing:.04em; }
   .profs-table td { padding:.65rem .75rem; border-bottom:1px solid var(--theme-foreground-faintest); vertical-align:middle; }
   .profs-table tr:hover td { background:var(--theme-background-alt); }
   .badge { display:inline-block; padding:.2rem .6rem; border-radius:12px; font-size:.78rem; font-weight:600; }
-  .badge-ativo { background:#dcfce7; color:#166534; }
-  .badge-inativo { background:#fee2e2; color:#991b1b; }
+  .badge-ativo { background:var(--om-ok-bg); color:var(--om-ok-text); }
+  .badge-inativo { background:var(--om-bad-bg); color:var(--om-bad-text); }
   .btn-toggle { padding:.25rem .65rem; border-radius:5px; border:1px solid var(--theme-foreground-faint); background:transparent; color:var(--theme-foreground); font-size:.8rem; cursor:pointer; text-decoration:none; }
   .td-acoes { white-space:nowrap; display:flex; gap:.35rem; align-items:center; }
   .btn-toggle:hover { background:var(--theme-background-alt); }

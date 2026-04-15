@@ -59,7 +59,8 @@ export function extrairLateralidade(dadosLog) {
 export function corpoSVGElement(lat) {
   const dirDominante = lat.pctDireita > lat.pctEsquerda;
   const cor          = dirDominante ? COR_DIREITA : COR_ESQUERDA;
-  const pathLado     = dirDominante ? PATH_LADO_R : PATH_LADO_L;
+  // Figura de frente: braço direito do personagem = lado esquerdo do viewer
+  const pathLado     = dirDominante ? PATH_LADO_L : PATH_LADO_R;
 
   const ns  = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(ns, "svg");
