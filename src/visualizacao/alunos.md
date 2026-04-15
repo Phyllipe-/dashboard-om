@@ -18,9 +18,9 @@ toc: false
   .filters { display:flex; gap:.65rem; margin-bottom:1.25rem; align-items:center; flex-wrap:wrap; }
   .filter-label { font-size:.875rem; font-weight:600; color:var(--theme-foreground-muted); }
   .filter-btn { padding:.28rem .8rem; border-radius:20px; border:1px solid var(--theme-foreground-faint); background:transparent; color:var(--theme-foreground); font-size:.82rem; cursor:pointer; }
-  .filter-btn.active { background:var(--theme-foreground); color:var(--theme-background); border-color:var(--theme-foreground); }
+  .filter-btn.active { background:#1e293b; color:#fff; border-color:#1e293b; }
   .search-input { padding:.38rem .7rem; border:1px solid var(--theme-foreground-faint); border-radius:6px; background:var(--theme-background); color:var(--theme-foreground); font-size:.88rem; outline:none; min-width:200px; }
-  .search-input:focus { border-color:#4a90e2; }
+  .search-input:focus { border-color:var(--om-accent); }
 
   /* ── Grid de cards ──────────────────────────── */
   .alunos-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:1rem; }
@@ -36,8 +36,8 @@ toc: false
   .card-meta { font-size:.78rem; color:var(--theme-foreground-muted); line-height:1.5; margin-top:.1rem; }
   .card-meta span { display:block; }
   .badge-finalizada { display:inline-block; font-size:.7rem; font-weight:700; padding:.1rem .45rem; border-radius:4px; margin-top:.25rem; }
-  .badge-sim { background:#dcfce7; color:#166534; }
-  .badge-nao { background:#fee2e2; color:#991b1b; }
+  .badge-sim { background:var(--om-ok-bg); color:var(--om-ok-text); }
+  .badge-nao { background:var(--om-bad-bg); color:var(--om-bad-text); }
   .badge-sd  { background:var(--theme-background-alt); color:var(--theme-foreground-muted); border:1px solid var(--theme-foreground-faintest); }
 
   /* ── Radar ──────────────────────────────────── */
@@ -47,16 +47,15 @@ toc: false
 
   /* ── Link para perfil ───────────────────────── */
   .card-footer { padding:.5rem 1rem .75rem; display:flex; justify-content:flex-end; gap:.5rem; }
-  .btn-ver { font-size:.78rem; font-weight:600; padding:.28rem .75rem; border-radius:6px; background:var(--theme-foreground); color:var(--theme-background); text-decoration:none; }
-  .btn-sessao { font-size:.78rem; font-weight:600; padding:.28rem .75rem; border-radius:6px; border:1px solid var(--theme-foreground-faint); background:transparent; color:var(--theme-foreground); text-decoration:none; cursor:pointer; }
-  .btn-ver:hover { opacity:.82; }
+  .btn-ver, .btn-sessao { font-size:.78rem; font-weight:600; padding:.28rem .75rem; border-radius:6px; background:transparent; color:var(--theme-foreground); text-decoration:none; border:1px solid var(--theme-foreground-faint); cursor:pointer; }
+  .btn-ver:hover, .btn-sessao:hover { background:var(--theme-background-alt); }
 
   /* ── Header clicável ─────────────────────────── */
   .card-header-link {
     display:flex; gap:.75rem; align-items:flex-start;
     flex:1; text-decoration:none; color:inherit; cursor:pointer;
   }
-  .card-header-link:hover .card-name { text-decoration:underline; color:#4a90e2; }
+  .card-header-link:hover .card-name { text-decoration:underline; color:var(--om-accent); }
   .card-header-link:hover .avatar { opacity:.88; }
 
   .empty-state { text-align:center; padding:3rem 0; color:var(--theme-foreground-muted); grid-column:1/-1; }
@@ -121,18 +120,12 @@ toc: false
     display:flex; justify-content:space-between; align-items:center;
     border-top:1px solid var(--theme-foreground-faintest);
   }
-  .btn-primary-modal {
-    padding:.5rem 1.1rem; border-radius:8px; font-size:.9rem; font-weight:700;
-    background:var(--theme-foreground); color:var(--theme-background);
-    text-decoration:none; border:none; cursor:pointer;
-  }
-  .btn-primary-modal:hover { opacity:.82; }
-  .btn-ghost-modal {
-    padding:.5rem 1rem; border-radius:8px; font-size:.9rem; font-weight:600;
+  .btn-primary-modal, .btn-ghost-modal {
+    padding:.5rem 1.1rem; border-radius:8px; font-size:.9rem; font-weight:600;
     border:1px solid var(--theme-foreground-faint); background:transparent;
-    color:var(--theme-foreground); cursor:pointer;
+    color:var(--theme-foreground); text-decoration:none; cursor:pointer;
   }
-  .btn-ghost-modal:hover { background:var(--theme-background-alt); }
+  .btn-primary-modal:hover, .btn-ghost-modal:hover { background:var(--theme-background-alt); }
 </style>
 
 ```js

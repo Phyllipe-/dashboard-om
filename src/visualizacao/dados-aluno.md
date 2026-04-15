@@ -10,8 +10,10 @@ toc: false
   .aluno-title  { font-size:1.5rem; font-weight:700; margin:0 0 .2rem; }
   .aluno-meta   { font-size:.875rem; color:var(--theme-foreground-muted); }
   .badge { display:inline-block; padding:.18rem .55rem; border-radius:12px; font-size:.78rem; font-weight:600; }
-  .badge-ativo   { background:#dcfce7; color:#166534; }
-  .badge-inativo { background:#fee2e2; color:#991b1b; }
+  .badge-ativo   { background:var(--om-ok-bg); color:var(--om-ok-text); }
+  .badge-inativo { background:var(--om-bad-bg); color:var(--om-bad-text); }
+  .badge-ok { background:var(--om-ok-bg); color:var(--om-ok-text); }
+  .badge-no { background:var(--om-bad-bg); color:var(--om-bad-text); }
   .stats-bar { display:flex; gap:1.25rem; margin-bottom:1.5rem; flex-wrap:wrap; }
   .stat-card { background:var(--theme-background-alt); border:1px solid var(--theme-foreground-faintest); border-radius:8px; padding:.65rem 1.1rem; min-width:110px; }
   .stat-value { font-size:1.5rem; font-weight:700; }
@@ -22,24 +24,17 @@ toc: false
   .table tr.clickable:hover td { background:var(--theme-background-alt); cursor:pointer; }
   .table tr.detail-row td { padding:0; border-bottom:2px solid var(--theme-foreground-faint); }
   .empty-state { text-align:center; padding:2.5rem 0; color:var(--theme-foreground-muted); }
-  .chevron { font-size:.75rem; color:var(--theme-foreground-muted); transition:transform .2s; display:inline-block; }
-  .chevron.open { transform:rotate(90deg); }
-  /* Análises */
-  .analise-panel { padding:1rem 1.25rem; background:var(--theme-background-alt); display:flex; flex-wrap:wrap; gap:.6rem; align-items:center; }
-  .analise-chip { padding:.3rem .75rem; border-radius:6px; font-size:.82rem; font-weight:600; text-decoration:none; }
-  .analise-disponivel { background:#dbeafe; color:#1d4ed8; }
-  .analise-ausente    { background:var(--theme-background); border:1px dashed var(--theme-foreground-faintest); color:var(--theme-foreground-muted); font-style:italic; }
-  .analise-label { font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--theme-foreground-muted); margin-right:.25rem; }
-  .no-data { font-size:.85rem; color:var(--theme-foreground-muted); padding:.5rem .75rem; font-style:italic; }
-  .analise-ver-link { margin-left:auto; padding:.28rem .75rem; border-radius:6px; font-size:.8rem; font-weight:600; background:var(--theme-foreground); color:var(--theme-background); text-decoration:none; white-space:nowrap; }
-  .analise-ver-link:hover { opacity:.82; }
+  .analise-dot { display:inline-block; width:8px; height:8px; border-radius:50%; }
+  .dot-ok  { background:var(--om-ok-text); }
+  .dot-no  { background:var(--theme-foreground-faintest); }
   .btn-ghost-sm { padding:.35rem .85rem; border-radius:6px; font-size:.875rem; font-weight:600; cursor:pointer; border:1px solid var(--theme-foreground-faint); background:transparent; color:var(--theme-foreground); text-decoration:none; }
   .btn-ghost-sm:hover { background:var(--theme-background-alt); }
 </style>
 
 ```js
 import { requireAuth, logout } from "../auth.js";
-import { fetchAluno, fetchSessoes, fetchAnalises } from "../api.js";
+import { fetchAluno, fetchSessoes, fetchSessao, fetchAnalises } from "../api.js";
+import { detectarGiros } from "../lib/sessao/giros.js";
 
 const currentUser = requireAuth();
 const headerUser   = document.getElementById("header-user");
@@ -72,108 +67,74 @@ try {
 const statSessoes  = document.createElement("div"); statSessoes.className  = "stat-card";
 statSessoes.innerHTML  = `<div class="stat-value">${sessoes.length}</div><div class="stat-label">Sessões</div>`;
 
-// ── Tabela de sessões com detalhe de análises ─────────────────────────────────
+// Buscar detalhe e análises de todas as sessões em paralelo
+const detalhesPorLog = {};
+const analisesPorLog = {};
+await Promise.all(sessoes.map(async s => {
+  const [det, analRes] = await Promise.all([
+    fetchSessao(s.id_log).catch(() => null),
+    fetchAnalises(s.id_log).catch(() => ({ analises: {} })),
+  ]);
+  detalhesPorLog[s.id_log] = det ?? {};
+  analisesPorLog[s.id_log] = analRes.analises ?? {};
+}));
+
+// ── Tabela Análise Comportamental por Sessão ──────────────────────────────────
 const tbody = document.createElement("tbody");
-const cacheAnalises = {};
-let expandidoLog = null;
 
-const TIPOS_ANALISE = ["lateralidade", "simulacao_trajetoria", "trafego", "giros", "comparacao"];
-const LABEL_ANALISE = {
-  lateralidade:          "Lateralidade",
-  simulacao_trajetoria:  "Trajetória",
-  trafego:               "Tráfego",
-  giros:                 "Giros",
-  comparacao:            "Comparação",
-};
-
-function criarPainelAnalises(analises, id_log) {
-  const panel = document.createElement("div");
-  panel.className = "analise-panel";
-
-  const lbl = document.createElement("span");
-  lbl.className = "analise-label";
-  lbl.textContent = "Análises:";
-  panel.append(lbl);
-
-  for (const tipo of TIPOS_ANALISE) {
-    const chip = document.createElement("span");
-    chip.className  = analises[tipo] ? "analise-chip analise-disponivel" : "analise-chip analise-ausente";
-    chip.textContent = LABEL_ANALISE[tipo] + (analises[tipo] ? " ✔" : " —");
-    panel.append(chip);
-  }
-
-  const verLink = document.createElement("a");
-  verLink.className = "analise-ver-link";
-  verLink.href      = `/visualizacao/perfil-detalhado?id=${idAluno}&log=${id_log}`;
-  verLink.textContent = "Ver análise →";
-  panel.append(verLink);
-
-  return panel;
+function fmtData(str) {
+  if (!str) return "—";
+  const d = new Date(str);
+  if (isNaN(d)) return str.slice(0, 10);
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yy = String(d.getFullYear()).slice(2);
+  return `${dd}/${mm}/${yy}`;
 }
 
-async function toggleDetalhe(id_log, detailTr, chevron) {
-  if (expandidoLog === id_log) {
-    detailTr.style.display = "none";
-    detailTr.querySelector("td").replaceChildren();
-    expandidoLog = null;
-    chevron.classList.remove("open");
-    return;
-  }
-  if (expandidoLog !== null) {
-    const ant = tbody.querySelector(`tr[data-detail-for="${expandidoLog}"]`);
-    if (ant) { ant.style.display = "none"; ant.querySelector("td").replaceChildren(); }
-    const ca = tbody.querySelector(`tr[data-id="${expandidoLog}"] .chevron`);
-    if (ca) ca.classList.remove("open");
-  }
-  expandidoLog = id_log;
-  chevron.classList.add("open");
-  detailTr.style.display = "";
-  const td = detailTr.querySelector("td");
-  td.textContent = "Carregando análises…";
-  td.style.padding = ".75rem";
-  try {
-    if (!cacheAnalises[id_log]) {
-      const res = await fetchAnalises(id_log);
-      cacheAnalises[id_log] = res.analises;
-    }
-    td.style.padding = "0";
-    td.replaceChildren(criarPainelAnalises(cacheAnalises[id_log], id_log));
-  } catch (e) {
-    td.textContent = "Erro: " + e.message;
-    td.style.color = "#b91c1c";
-  }
+function fmtTempo(seg) {
+  if (seg == null) return "—";
+  const m = Math.floor(seg / 60), s = Math.round(seg % 60);
+  return m > 0 ? `${m}m ${s}s` : `${s}s`;
+}
+
+function contarGiros(dadosLog) {
+  try { return detectarGiros(dadosLog).length; } catch { return "—"; }
 }
 
 function renderTabela() {
   tbody.replaceChildren();
   if (!sessoes.length) {
     const tr = document.createElement("tr");
-    const td = document.createElement("td"); td.colSpan = 3; td.className = "empty-state";
+    const td = document.createElement("td"); td.colSpan = 7; td.className = "empty-state";
     td.textContent = "Nenhuma sessão registada para este aluno.";
     tr.append(td); tbody.append(tr); return;
   }
   for (const s of sessoes) {
-    const tr = document.createElement("tr"); tr.className = "clickable"; tr.dataset.id = s.id_log;
+    const an = analisesPorLog[s.id_log] ?? {};
+    const d  = detalhesPorLog[s.id_log] ?? {};
+    const tr = document.createElement("tr");
 
-    const detailTr = document.createElement("tr"); detailTr.className = "detail-row";
-    detailTr.dataset.detailFor = s.id_log; detailTr.style.display = "none";
-    const detailTd = document.createElement("td"); detailTd.colSpan = 3; detailTr.append(detailTd);
+    const cell = (text, opts = {}) => {
+      const td = document.createElement("td");
+      td.textContent = text;
+      if (opts.color) td.style.color = opts.color;
+      if (opts.center) td.style.textAlign = "center";
+      if (opts.muted) td.style.color = "var(--theme-foreground-muted)";
+      return td;
+    };
 
-    const chevron = document.createElement("span"); chevron.className = "chevron"; chevron.textContent = "▶";
+    tr.append(
+      cell(s.id_mapa ?? d.id_mapa ?? "—", { muted: true }),
+      cell(fmtData(s.data)),
+      cell(fmtTempo(d.tempo_sessao ?? s.tempo_sessao)),
+      cell(d.total_acoes ?? "—", { center: true }),
+      cell(d.total_colisoes ?? "—", { center: true, color: d.total_colisoes > 0 ? "#b91c1c" : null }),
+      cell(contarGiros(d.dados_log), { center: true }),
+      cell(d.total_objetivos != null ? `${d.objetivos_concluidos ?? 0} / ${d.total_objetivos}` : "—", { center: true }),
+    );
 
-    const tdMapa = document.createElement("td"); tdMapa.style.fontWeight = "600";
-    tdMapa.append(chevron, document.createTextNode(" " + s.nome_mapa));
-
-    const tdData = document.createElement("td"); tdData.style.cssText = "font-size:.85rem;color:var(--theme-foreground-muted)";
-    tdData.textContent = s.data;
-
-    const tdId = document.createElement("td"); tdId.style.cssText = "font-size:.78rem;color:var(--theme-foreground-faint)";
-    tdId.textContent = `#${s.id_log}`;
-
-    tr.append(tdMapa, tdData, tdId);
-    tr.addEventListener("click", () => toggleDetalhe(s.id_log, detailTr, chevron));
-
-    tbody.append(tr, detailTr);
+    tbody.append(tr);
   }
 }
 renderTabela();
@@ -184,22 +145,25 @@ statsBar.append(statSessoes);
 
 const table = document.createElement("table"); table.className = "table";
 const thead = document.createElement("thead");
-thead.innerHTML = "<tr><th>Mapa</th><th>Data</th><th>Log #</th></tr>";
+thead.innerHTML = `<tr>
+  <th>ID Mapa</th><th>Data</th><th>Tempo Total</th>
+  <th style="text-align:center">Nº Ações</th>
+  <th style="text-align:center">Nº Colisões</th>
+  <th style="text-align:center">Giros</th>
+  <th style="text-align:center">Objetivos</th>
+</tr>`;
 table.append(thead, tbody);
 
 display(html`<div>
-  <a class="back-link" href="/visualizacao/alunos">← Lista de alunos</a>
   <div class="aluno-header">
     <div>
-      <h1 class="aluno-title">${aluno.nome_completo}</h1>
-      <p class="aluno-meta">${aluno.idade} anos${aluno.escolaridade ? " · " + aluno.escolaridade : ""} · ${aluno.email}</p>
+      <h1 class="aluno-title">${aluno.nome_completo} <span style="font-size:.75rem;font-weight:400;color:var(--theme-foreground-muted)">#${idAluno}</span></h1>
+      <p class="aluno-meta">${aluno.idade} anos${aluno.escolaridade ? " · " + aluno.escolaridade : ""} · ${aluno.email} (${aluno.ativo ? "Ativo" : "Inativo"})</p>
     </div>
-    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:.5rem">
-      <span class="badge ${aluno.ativo ? "badge-ativo" : "badge-inativo"}">${aluno.ativo ? "Ativo" : "Inativo"}</span>
-      <a class="btn-ghost-sm" href="/visualizacao/perfil-aluno?id=${idAluno}">Perfil geral →</a>
     </div>
   </div>
   ${statsBar}
+  <p style="font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--theme-foreground-muted);margin-bottom:.5rem">Análise Comportamental por Sessão</p>
   ${table}
 </div>`);
 ```

@@ -19,11 +19,11 @@ toc: false
   .table tr.detail-row td { padding:0; border-bottom:2px solid var(--theme-foreground-faint); }
 
   .badge { display:inline-block; padding:.18rem .55rem; border-radius:12px; font-size:.78rem; font-weight:600; }
-  .badge-ativo   { background:#dcfce7; color:#166534; }
-  .badge-inativo { background:#fee2e2; color:#991b1b; }
+  .badge-ativo   { background:var(--om-ok-bg); color:var(--om-ok-text); }
+  .badge-inativo { background:var(--om-bad-bg); color:var(--om-bad-text); }
 
   .btn { padding:.45rem 1rem; border-radius:6px; font-size:.875rem; font-weight:600; cursor:pointer; border:none; text-decoration:none; display:inline-block; transition:opacity .15s; }
-  .btn-primary { background:var(--theme-foreground); color:var(--theme-background); }
+  .btn-primary { background:#1e293b; color:#fff; }
   .btn-primary:hover { opacity:.82; }
   .btn-sm { padding:.22rem .6rem; font-size:.8rem; border-radius:5px; border:1px solid var(--theme-foreground-faint); background:transparent; color:var(--theme-foreground); cursor:pointer; }
   .btn-sm:hover { background:var(--theme-background-alt); }
@@ -52,7 +52,7 @@ toc: false
   /* Sequência de mapas */
   .seq-ol { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:.3rem; }
   .seq-ol li { display:flex; align-items:center; gap:.55rem; font-size:.85rem; }
-  .seq-num { display:inline-flex; align-items:center; justify-content:center; width:1.35rem; height:1.35rem; border-radius:50%; background:var(--theme-foreground); color:var(--theme-background); font-size:.72rem; font-weight:700; flex-shrink:0; }
+  .seq-num { display:inline-flex; align-items:center; justify-content:center; width:1.35rem; height:1.35rem; border-radius:50%; background:#1e293b; color:#fff; font-size:.72rem; font-weight:700; flex-shrink:0; }
   /* Preview thumbnail */
   .thumb { width:36px; height:36px; object-fit:cover; border-radius:4px; border:1px solid var(--theme-foreground-faintest); flex-shrink:0; }
   /* Alunos */

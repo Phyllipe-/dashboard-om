@@ -5,16 +5,25 @@ toc: false
 ---
 
 <style>
-  /* Oculta header global nesta página */
-  #app-header { display: none !important; }
+  /* Oculta header/nav global nesta página */
+  #app-header, #app-nav,
+  .observablehq-header, header { display: none !important; }
 
-  body { margin: 0; }
+  /* Ocupa o viewport inteiro e centraliza o card */
+  body, html { margin: 0; padding: 0; height: 100%; }
+
+  /* Neutraliza containers do framework */
+  .observablehq-center,
+  .observablehq--article,
+  main { all: unset !important; display: block !important; }
 
   .login-page {
-    min-height: 80vh;
+    position: fixed;
+    inset: 0;
     display: flex;
     align-items: center;
     justify-content: center;
+    background: var(--theme-background);
   }
 
   .login-card {
@@ -51,6 +60,8 @@ toc: false
   }
 
   .login-field input {
+    width: 100%;
+    box-sizing: border-box;
     padding: 0.6rem 0.75rem;
     border: 1px solid var(--theme-foreground-faint);
     border-radius: 6px;
@@ -62,14 +73,14 @@ toc: false
   }
 
   .login-field input:focus {
-    border-color: #4a90e2;
+    border-color: var(--om-accent);
   }
 
   .login-btn {
     width: 100%;
     padding: 0.7rem;
-    background: var(--theme-foreground);
-    color: var(--theme-background);
+    background: #1e293b;
+    color: #fff;
     border: none;
     border-radius: 6px;
     font-size: 1rem;
@@ -85,8 +96,8 @@ toc: false
   .login-error {
     margin-top: 0.9rem;
     padding: 0.6rem 0.75rem;
-    background: #fee2e2;
-    color: #b91c1c;
+    background: var(--om-bad-bg);
+    color: var(--om-bad-text);
     border-radius: 6px;
     font-size: 0.875rem;
   }
