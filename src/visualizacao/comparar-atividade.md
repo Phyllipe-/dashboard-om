@@ -35,9 +35,7 @@ toc: false
   .kpi-sub   { font-size: .72rem; color: var(--theme-foreground-muted); margin-top: .15rem; }
 
   /* ── 3 gráficos ─────────────────────────────────────────────────────────── */
-  .comp-charts { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: .75rem; margin-bottom: .75rem; }
-  @media(max-width:900px) { .comp-charts { grid-template-columns: 1fr 1fr; } }
-  @media(max-width:600px) { .comp-charts { grid-template-columns: 1fr; } }
+  .comp-charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: .75rem; margin-bottom: .75rem; align-items: stretch; }
 
   .chart-card {
     background: var(--theme-background-alt);
@@ -59,6 +57,11 @@ toc: false
   }
   .comp-table-title { font-size: .82rem; font-weight: 700; }
 
+  /* ── Fonte dos gráficos ─────────────────────────────────────────────────── */
+  .chart-card { font-size: 14px; }
+  .chart-card svg text { font-size: inherit; }
+  .chart-card figure, .chart-card svg { font-size: 14px !important; }
+
   /* ── Estados ────────────────────────────────────────────────────────────── */
   .comp-loading { text-align: center; padding: 2.5rem 0; color: var(--theme-foreground-muted); font-size: .9rem; }
   .comp-empty   { text-align: center; padding: 1.5rem 0; color: var(--theme-foreground-muted); font-style: italic; font-size: .85rem; }
@@ -68,9 +71,13 @@ toc: false
 import { requireAuth, logout } from "../auth.js";
 import { fetchAtividades, fetchAtividade, fetchSessoes, fetchMetricasAluno } from "../api.js";
 import * as Plot from "npm:@observablehq/plot";
+import * as vl from "npm:vega-lite-api";
+import * as vega from "npm:vega";
+import * as vegaLite from "npm:vega-lite";
+vl.register(vega, vegaLite, { view: { renderer: "svg" } });
 import {
   semCor, fmtPct, mediaMetricas, corAluno,
-  graficoRanking, graficoMultimetrica, graficoProgresso, tabelaHeatmap,
+  graficoRankingHorizontal, graficoParaleloMultimetrica, graficoBulletProgresso, tabelaHeatmap,
 } from "../lib/atividade/comparar.js";
 
 const currentUser = requireAuth();
@@ -125,6 +132,7 @@ const root = document.createElement("div");
 const kpisEl   = document.createElement("div"); kpisEl.className = "comp-kpis";
 const chartsEl = document.createElement("div"); chartsEl.className = "comp-charts";
 const tableEl  = document.createElement("div");
+tableEl.style.gridColumn = "span 2";
 
 function loading(el, msg = "Carregando…") {
   el.innerHTML = `<div class="comp-loading">${msg}</div>`;
@@ -241,22 +249,100 @@ async function renderizar(idAtividade) {
     chartsEl.append(card);
   }
 
-  try { mountChart(`Ranking — ${labelMetrica}`, "Desempenho médio por aluno", graficoRanking(dadosBrutos, chaveMetrica, Plot)); }
-  catch(e) { console.error("graficoRanking:", e); mountChart(`Ranking — ${labelMetrica}`, "", null); }
+  try { mountChart(`Ranking — ${labelMetrica} (Horizontal)`, "Desempenho médio por aluno", graficoRankingHorizontal(dadosBrutos, chaveMetrica, Plot)); }
+  catch(e) { console.error("graficoRankingHorizontal:", e); mountChart(`Ranking — ${labelMetrica} (Horizontal)`, "", null); }
 
-  try { mountChart("Comparação de métricas", "Precisão · Objetivos · Fluidez por aluno", graficoMultimetrica(dadosBrutos, Plot)); }
-  catch(e) { console.error("graficoMultimetrica:", e); mountChart("Comparação de métricas", "", null); }
+  try {
+    const c = document.createElement("div"); c.className = "chart-card"; c.style.gridColumn = "span 2";
+    const t = document.createElement("div"); t.className = "chart-title"; t.textContent = "Comparação de métricas (Paralelo)";
+    const s = document.createElement("div"); s.className = "chart-sub";   s.textContent = "Cada linha = um aluno — feixes revelam padrões";
+    c.append(t, s);
+    const el = graficoParaleloMultimetrica(dadosBrutos);
+    if (el) c.append(el); else { const p = document.createElement("p"); p.className = "comp-empty"; p.textContent = "Dados insuficientes."; c.append(p); }
+    chartsEl.append(c);
+  } catch(e) { console.error("graficoParaleloMultimetrica:", e); }
 
-  try { mountChart("Progresso", "Sessões concluídas nesta atividade", graficoProgresso(dadosBrutos, Plot)); }
-  catch(e) { console.error("graficoProgresso:", e); mountChart("Progresso", "", null); }
 
-  // ── Legenda do gráfico de progresso ───────────────────────────────────────
-  const legProgresso = ["#5ba85b:Finalizado","#4a90e2:Em progresso","#9ca3af:Sem status"].map(s => {
-    const [cor, lbl] = s.split(":");
-    return `<span style="display:inline-flex;align-items:center;gap:3px;font-size:9px;color:#555;margin-right:8px;">
-      <span style="width:8px;height:8px;border-radius:2px;background:${cor};display:inline-block;"></span>${lbl}</span>`;
-  }).join("");
-  chartsEl.lastElementChild?.insertAdjacentHTML("beforeend", `<div style="margin-top:4px;line-height:2;">${legProgresso}</div>`);
+  try { mountChart("Progresso (Bullet)", "Média geral vs. meta de 70%", graficoBulletProgresso(dadosBrutos)); }
+  catch(e) { console.error("graficoBulletProgresso:", e); mountChart("Progresso (Bullet)", "", null); }
+
+  try {
+    const vlData = dadosBrutos.filter(d => d.metricas).map(d => {
+      const media = mediaMetricas(d.metricas) ?? 0;
+      return {
+        Aluno:     d.aluno.nome_completo,
+        Precisao:  d.metricas.precisao  ?? 0,
+        Objetivos: d.metricas.objetivos ?? 0,
+        Fluidez:   d.metricas.fluidez   ?? 0,
+        Media:     media,
+        Categoria: media >= 70 ? "Bom" : media >= 40 ? "Regular" : "Atenção",
+      };
+    });
+    const panAndZoom = vl.selectInterval().bind("scales");
+    const vlChart = await vl.markCircle({ opacity: 0.85, stroke: "white", strokeWidth: 1 })
+      .select(panAndZoom)
+      .data(vlData)
+      .encode(
+        vl.x().fieldQ("Precisao").scale({ domain: [0, 100] }).title("Precisão (%)"),
+        vl.y().fieldQ("Objetivos").scale({ domain: [0, 100] }).title("Objetivos (%)"),
+        vl.size().fieldQ("Fluidez").title("Fluidez (%)").scale({ range: [60, 600] }).legend(null),
+        vl.color().fieldN("Categoria").scale({
+          domain: ["Bom", "Regular", "Atenção"],
+          range:  ["#166534", "#854d0e", "#991b1b"],
+        }).legend(null),
+        vl.tooltip([
+          { field: "Aluno",     type: "nominal",      title: "Aluno"     },
+          { field: "Precisao",  type: "quantitative", title: "Precisão"  },
+          { field: "Objetivos", type: "quantitative", title: "Objetivos" },
+          { field: "Fluidez",   type: "quantitative", title: "Fluidez"   },
+          { field: "Media",     type: "quantitative", title: "Média"     },
+        ])
+      )
+      .width(300).height(260)
+      .render();
+
+    // Legendas em DOM, empilhadas verticalmente
+    function mkLegRow(items) {
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:#555;margin-top:8px;";
+      for (const { cor, label, shape } of items) {
+        const item = document.createElement("span");
+        item.style.cssText = "display:inline-flex;align-items:center;gap:5px;";
+        const icon = document.createElement("span");
+        if (shape === "circle") {
+          icon.style.cssText = `width:10px;height:10px;border-radius:50%;background:${cor};flex-shrink:0;`;
+        } else {
+          icon.style.cssText = `width:10px;height:10px;border-radius:2px;background:${cor};flex-shrink:0;`;
+        }
+        const lbl = document.createElement("span"); lbl.textContent = label;
+        item.append(icon, lbl);
+        row.append(item);
+      }
+      return row;
+    }
+
+    const fluidezVals = [0, 10, 20, 30];
+    const legFluidez = mkLegRow(fluidezVals.map(v => ({ cor: "#aaa", label: `${v}%`, shape: "circle" })));
+    const legFluidezTitle = document.createElement("div");
+    legFluidezTitle.style.cssText = "font-size:11px;font-weight:700;color:#888;margin-top:10px;";
+    legFluidezTitle.textContent = "Fluidez (tamanho)";
+
+    const legCatTitle = document.createElement("div");
+    legCatTitle.style.cssText = "font-size:11px;font-weight:700;color:#888;margin-top:8px;";
+    legCatTitle.textContent = "Categoria";
+    const legCat = mkLegRow([
+      { cor: "#166534", label: "Bom",     shape: "circle" },
+      { cor: "#854d0e", label: "Regular", shape: "circle" },
+      { cor: "#991b1b", label: "Atenção", shape: "circle" },
+    ]);
+
+    const c = document.createElement("div"); c.className = "chart-card"; c.style.gridColumn = "span 2";
+    const t = document.createElement("div"); t.className = "chart-title"; t.textContent = "Dispersão — Precisão × Objetivos";
+    const s = document.createElement("div"); s.className = "chart-sub";   s.textContent = "Tamanho = Fluidez · Arraste para fazer zoom";
+    c.append(t, s, vlChart, legFluidezTitle, legFluidez, legCatTitle, legCat);
+    chartsEl.append(c);
+  } catch(e) { console.error("graficoScatter:", e); mountChart("Dispersão — Precisão × Objetivos", "", null); }
+
 
   // ── Tabela heatmap ─────────────────────────────────────────────────────────
   tableEl.replaceChildren();
@@ -277,6 +363,7 @@ async function renderizar(idAtividade) {
     tableWrap.innerHTML += `<p class="comp-empty">Erro ao renderizar tabela.</p>`;
   }
   tableEl.append(tableWrap);
+  chartsEl.append(tableEl);
 }
 
 // ── Montar estrutura do dashboard ─────────────────────────────────────────────
@@ -291,7 +378,7 @@ grpMet.append(lblMet, selMetrica);
 filtersEl.append(grpAtiv, grpMet);
 
 const bodyEl = document.createElement("div");
-bodyEl.append(chartsEl, tableEl);
+bodyEl.append(chartsEl);
 
 root.append(filtersEl, kpisEl, bodyEl);
 

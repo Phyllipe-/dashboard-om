@@ -232,6 +232,7 @@ import { extrairSegmentos, extrairColisoes, corSegmento, raioColisao } from "../
 import { extrairLateralidade, corpoSVGElement, COR_DIREITA as LAT_COR_DIR, COR_ESQUERDA as LAT_COR_ESQ } from "../lib/sessao/lateralidade.js";
 import { parseMapaXML } from "../lib/mapa/parser.js";
 import { mapaParaGeoJSON } from "../lib/mapa/geojson.js";
+import { graficoWaffleMultimetrica } from "../lib/atividade/comparar.js";
 
 const currentUser = requireAuth();
 const headerUser   = document.getElementById("header-user");
@@ -406,6 +407,7 @@ function aplicarFiltroSessoes() {
   atualizarStats(filtradas);
   atualizarAnaliseBar(filtradas);
   atualizarSessionList(filtradas);
+  atualizarWaffle(filtradas);
 
   // Mapa de giros — usa a primeira sessão filtrada
   const target = filtradas[0];
@@ -1718,6 +1720,23 @@ function atualizarAvatar() {
   selAvatar.textContent = initials(a.nome_completo);
 }
 
+// ── Waffle: métricas do aluno (média das sessões filtradas) ──────────────
+const waffleContainer = document.createElement("div");
+
+function atualizarWaffle(filtradas = estado.analises) {
+  waffleContainer.replaceChildren();
+  // Adapta formato: [{ metricas }] compatível com graficoWaffleMultimetrica
+  const dadosAdaptados = filtradas
+    .filter(a => a.metricas)
+    .map(a => ({ metricas: a.metricas }));
+  if (!dadosAdaptados.length) {
+    waffleContainer.innerHTML = `<p style="font-size:.82rem;color:#888;text-align:center;padding:1rem;">Sem métricas disponíveis.</p>`;
+    return;
+  }
+  const el = graficoWaffleMultimetrica(dadosAdaptados, Plot);
+  if (el) waffleContainer.append(el);
+}
+
 // ── Carregar dados do aluno selecionado ───────────────────────────────────
 async function carregarAluno(idAluno) {
   if (!idAluno) return;
@@ -1850,6 +1869,12 @@ const colCentro = html`<div class="col-centro">
 </div>`;
 
 const colDireita = html`<div class="col-direita">
+
+  <!-- Comparação de métricas (Waffle) -->
+  <div class="painel">
+    <div class="painel-titulo">Comparação de Métricas</div>
+    <div class="painel-corpo">${waffleContainer}</div>
+  </div>
 
   <!-- Mapa da Lateralidade -->
   <div class="painel">
