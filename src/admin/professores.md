@@ -6,9 +6,10 @@ toc: false
 <style>
   .page-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:1.5rem; flex-wrap:wrap; gap:.75rem; }
   .page-header h1 { margin:0; font-size:1.5rem; }
-  .btn { padding:.5rem 1.1rem; border-radius:6px; font-size:.9rem; font-weight:600; cursor:pointer; border:none; text-decoration:none; display:inline-block; }
-  .btn-primary { background:#1e293b; color:#fff; }
-  .btn-primary:hover { opacity:.82; }
+  .btn { padding:.6rem 1.25rem; border-radius:6px; font-size:.95rem; font-weight:600; cursor:pointer; border:none; text-decoration:none; display:inline-block; transition:opacity .15s; }
+  .btn-primary { background:var(--theme-foreground); }
+  a.btn-primary, button.btn-primary { color:var(--theme-background); }
+  .btn-primary:hover:not(:disabled) { opacity:.82; }
   .search-input { padding:.4rem .75rem; border:1px solid var(--theme-foreground-faint); border-radius:6px; background:var(--theme-background); color:var(--theme-foreground); font-size:.9rem; outline:none; min-width:220px; }
   .search-input:focus { border-color:var(--om-accent); }
   .profs-table { width:100%; border-collapse:collapse; font-size:.9rem; }
@@ -18,10 +19,14 @@ toc: false
   .badge { display:inline-block; padding:.2rem .6rem; border-radius:12px; font-size:.78rem; font-weight:600; }
   .badge-ativo { background:var(--om-ok-bg); color:var(--om-ok-text); }
   .badge-inativo { background:var(--om-bad-bg); color:var(--om-bad-text); }
-  .btn-toggle { padding:.25rem .65rem; border-radius:5px; border:1px solid var(--theme-foreground-faint); background:transparent; color:var(--theme-foreground); font-size:.8rem; cursor:pointer; text-decoration:none; }
-  .td-acoes { white-space:nowrap; display:flex; gap:.35rem; align-items:center; }
+  .btn-toggle { padding:.22rem .55rem; border-radius:5px; border:1px solid var(--theme-foreground-faint); background:transparent; color:var(--theme-foreground); font-size:.78rem; cursor:pointer; text-decoration:none; white-space:nowrap; }
   .btn-toggle:hover { background:var(--theme-background-alt); }
   .btn-toggle:disabled { opacity:.4; cursor:not-allowed; }
+  .btn-danger { border-color:#fca5a5; color:#dc2626; }
+  .btn-danger:hover:not(:disabled) { background:#fef2f2; }
+  .td-acoes { white-space:nowrap; display:flex; gap:.3rem; align-items:center; }
+  .th-acao { width:1%; white-space:nowrap; }
+  .td-status { width:1%; white-space:nowrap; }
   .empty-state { text-align:center; padding:3rem 0; color:var(--theme-foreground-muted); }
   .access-denied { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:3rem 1rem; text-align:center; gap:.75rem; color:var(--theme-foreground-muted); }
   .access-denied h2 { margin:0; font-size:1.2rem; color:var(--theme-foreground); }
@@ -29,7 +34,7 @@ toc: false
 
 ```js
 import { requireAuth, logout } from "../auth.js";
-import { fetchProfessores, toggleAtivoProfessor } from "../api.js";
+import { fetchProfessores, toggleAtivoProfessor, removerProfessor } from "../api.js";
 
 const currentUser = requireAuth();
 const headerUser = document.getElementById("header-user");
@@ -109,13 +114,33 @@ function renderTabela() {
       }
     });
 
+    const btnRemover = document.createElement("button");
+    btnRemover.className = "btn-toggle btn-danger";
+    btnRemover.textContent = "Remover";
+    btnRemover.disabled = isAdmin;
+    btnRemover.title = isAdmin ? "O administrador não pode ser removido." : "Remover professor permanentemente";
+    btnRemover.addEventListener("click", async () => {
+      if (!confirm(`Remover "${p.nome_completo}" permanentemente?\n\nEsta ação não pode ser desfeita.`)) return;
+      btnRemover.disabled = true;
+      btnRemover.textContent = "Removendo…";
+      try {
+        await removerProfessor(p.id_professor);
+        todosProfessores = todosProfessores.filter(x => x.id_professor !== p.id_professor);
+        renderTabela();
+      } catch (e) {
+        alert("Erro: " + e.message);
+        btnRemover.disabled = false;
+        btnRemover.textContent = "Remover";
+      }
+    });
+
     const tdNome    = document.createElement("td"); tdNome.append(linkNome);
     const tdEmail   = document.createElement("td"); tdEmail.style.color = "var(--theme-foreground-muted)"; tdEmail.textContent = p.email;
     const tdRegistro = document.createElement("td"); tdRegistro.textContent = p.registro_profissional || "—";
-    const tdBadge   = document.createElement("td"); tdBadge.append(badge);
+    const tdBadge   = document.createElement("td"); tdBadge.className = "td-status"; tdBadge.append(badge);
     const tdAcao    = document.createElement("td");
     const divAcoes  = document.createElement("div"); divAcoes.className = "td-acoes";
-    divAcoes.append(btnEditar, btnToggle);
+    divAcoes.append(btnEditar, btnToggle, btnRemover);
     tdAcao.append(divAcoes);
 
     const tr = document.createElement("tr");
@@ -134,7 +159,7 @@ display(html`<div>
   </div>
   <div style="margin-bottom:1.25rem;">${searchInput}</div>
   <table class="profs-table">
-    <thead><tr><th>Nome</th><th>Email</th><th>Registro profissional</th><th>Status</th><th>Ação</th></tr></thead>
+    <thead><tr><th>Nome</th><th>Email</th><th>Registro profissional</th><th class="td-status">Status</th><th class="th-acao">Ação</th></tr></thead>
     ${tbody}
   </table>
 </div>`);

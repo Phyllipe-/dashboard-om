@@ -30,10 +30,11 @@ toc: false
   .badge-ativo   { background:var(--om-ok-bg); color:var(--om-ok-text); }
   .badge-inativo { background:var(--om-bad-bg); color:var(--om-bad-text); }
 
-  .btn { padding:.45rem 1rem; border-radius:6px; font-size:.875rem; font-weight:600; cursor:pointer; border:none; text-decoration:none; display:inline-block; transition:opacity .15s; }
-  .btn-primary { background:#1e293b; color:#fff; }
+  .btn { padding:.6rem 1.25rem; border-radius:6px; font-size:.95rem; font-weight:600; cursor:pointer; border:1.5px solid transparent; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; box-sizing:border-box; transition:opacity .15s; }
+  .btn-primary { background:var(--theme-foreground); border-color:var(--theme-foreground); }
+  a.btn-primary, button.btn-primary { color:var(--theme-background); }
   .btn-primary:hover { opacity:.82; }
-  .btn-ghost { background:transparent; color:var(--theme-foreground); border:1px solid var(--theme-foreground-faint); }
+  .btn-ghost { background:transparent; color:var(--theme-foreground); border-color:var(--theme-foreground-faint); }
   .btn-ghost:hover { background:var(--theme-background-alt); }
   .btn-sm { padding:.22rem .6rem; font-size:.8rem; border-radius:5px; border:1px solid var(--theme-foreground-faint); background:transparent; color:var(--theme-foreground); cursor:pointer; }
   .btn-sm:hover { background:var(--theme-background-alt); }

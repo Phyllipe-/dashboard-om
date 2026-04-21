@@ -17,8 +17,10 @@ toc: false
   /* ── Filtros ────────────────────────────────── */
   .filters { display:flex; gap:.65rem; margin-bottom:1.25rem; align-items:center; flex-wrap:wrap; }
   .filter-label { font-size:.875rem; font-weight:600; color:var(--theme-foreground-muted); }
-  .filter-btn { padding:.28rem .8rem; border-radius:20px; border:1px solid var(--theme-foreground-faint); background:transparent; color:var(--theme-foreground); font-size:.82rem; cursor:pointer; }
-  .filter-btn.active { background:#1e293b; color:#fff; border-color:#1e293b; }
+  .filter-btn { padding:.28rem .8rem; border-radius:20px; border:1px solid var(--theme-foreground-faint); background:transparent; color:var(--theme-foreground); font-size:.82rem; cursor:pointer; transition:all .15s; }
+  .filter-btn.active           { background:var(--theme-foreground); color:var(--theme-background); border-color:var(--theme-foreground); }
+  .filter-btn.active.f-ativo   { background:#15803d; border-color:#15803d; color:#fff; }
+  .filter-btn.active.f-inativo { background:#b45309; border-color:#b45309; color:#fff; }
   .search-input { padding:.38rem .7rem; border:1px solid var(--theme-foreground-faint); border-radius:6px; background:var(--theme-background); color:var(--theme-foreground); font-size:.88rem; outline:none; min-width:200px; }
   .search-input:focus { border-color:var(--om-accent); }
 
@@ -26,8 +28,11 @@ toc: false
   .alunos-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:1rem; }
 
   /* ── Card ───────────────────────────────────── */
-  .aluno-card { border:1px solid var(--theme-foreground-faintest); border-radius:12px; overflow:hidden; background:var(--theme-background); transition:box-shadow .15s, transform .15s; }
+  .aluno-card { border:1px solid var(--theme-foreground-faintest); border-left:4px solid var(--card-status-color, var(--theme-foreground-faintest)); border-radius:12px; overflow:hidden; background:var(--theme-background); transition:box-shadow .15s, transform .15s; }
   .aluno-card:hover { box-shadow:0 4px 16px rgba(0,0,0,.1); transform:translateY(-2px); }
+  .aluno-card.status-ativo   { --card-status-color:#16a34a; }
+  .aluno-card.status-inativo { --card-status-color:#ca8a04; }
+  .aluno-card.status-outro   { --card-status-color:#2563eb; }
 
   .card-header { padding:.85rem 1rem .75rem; border-bottom:1px solid var(--theme-foreground-faintest); display:flex; gap:.75rem; align-items:flex-start; }
   .avatar { width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:1rem; color:#fff; flex-shrink:0; }
@@ -130,7 +135,7 @@ toc: false
 
 ```js
 import { requireAuth, logout } from "../auth.js";
-import { fetchAlunos, fetchSessoes, fetchMetricasAluno } from "../api.js";
+import { fetchAlunos, fetchSessoes, fetchMetricasAluno, buscarTodosAlunos, apropriarAluno } from "../api.js";
 
 const currentUser = requireAuth();
 const headerUser   = document.getElementById("header-user");
@@ -151,12 +156,51 @@ function initials(nome) {
 // Objetivos = metas alcançadas / metas totais × 100
 // Fluidez   = distância ótima / distância percorrida × 100
 
-// ── Cor do radar por desempenho médio ─────────────────────────────────────
-function radarColor(m) {
-  const avg = (m.precisao + m.objetivos + m.fluidez) / 3;
-  if (avg >= 60) return { stroke:"#2e7d32", fill:"rgba(46,125,50,.18)" };
-  if (avg >= 35) return { stroke:"#e6a817", fill:"rgba(230,168,23,.18)" };
-  return { stroke:"#c0392b", fill:"rgba(192,57,43,.15)" };
+// ── Cor do radar por status do aluno ─────────────────────────────────────
+function statusColor(a) {
+  if (a.ativo) return { stroke:"#16a34a", fill:"rgba(22,163,74,.18)" };
+  // futuro: aluno de outro professor → { stroke:"#2563eb", fill:"rgba(37,99,235,.18)" }
+  return { stroke:"#ca8a04", fill:"rgba(202,138,4,.18)" };
+}
+
+// ── SVG Radar vazio (sem dados) ───────────────────────────────────────────
+function makeRadarVazio(color) {
+  const cx = 105, cy = 105, R = 62;
+  const eixos = [
+    { angulo: -90, label: "Precisão"  },
+    { angulo:  30, label: "Objetivos" },
+    { angulo: 150, label: "Fluidez"   },
+  ];
+  function pt(r, deg) {
+    const rad = deg * Math.PI / 180;
+    return [cx + r * Math.cos(rad), cy + r * Math.sin(rad)];
+  }
+  let grid = "";
+  for (const pct of [0.25, 0.5, 0.75, 1]) {
+    const pts = eixos.map(e => pt(R * pct, e.angulo)).map(([x,y]) => `${x},${y}`).join(" ");
+    grid += `<polygon points="${pts}" fill="none" stroke="rgba(128,128,128,.25)" stroke-width="${pct === 1 ? 1 : .5}"/>`;
+  }
+  const axes = eixos.map(e => {
+    const [x, y] = pt(R, e.angulo);
+    return `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="rgba(128,128,128,.25)" stroke-width=".8"/>`;
+  }).join("");
+  const LABEL_OFFSET = 24;
+  const labels = eixos.map(e => {
+    const [lx, ly] = pt(R + LABEL_OFFSET, e.angulo);
+    const [gx, gy] = pt(R, e.angulo);
+    const anchor = lx < cx - 5 ? "end" : lx > cx + 5 ? "start" : "middle";
+    const guide = `<line x1="${gx}" y1="${gy}" x2="${lx}" y2="${ly}" stroke="rgba(128,128,128,.18)" stroke-width=".6"/>`;
+    return `
+      ${guide}
+      <text x="${lx}" y="${ly - 6}" font-size="9.5" fill="rgba(180,180,180,.8)"
+            text-anchor="${anchor}" font-family="system-ui,sans-serif">${e.label}</text>
+      <text x="${lx}" y="${ly + 8}" font-size="11" font-weight="700" fill="${color.stroke}" opacity=".35"
+            text-anchor="${anchor}" font-family="system-ui,sans-serif">—</text>`;
+  }).join("");
+  const dot = `<circle cx="${cx}" cy="${cy}" r="3.5" fill="${color.stroke}" opacity=".35"/>`;
+  return `<svg viewBox="0 0 210 210" xmlns="http://www.w3.org/2000/svg">
+    ${grid}${axes}${labels}${dot}
+  </svg>`;
 }
 
 // ── SVG Radar ─────────────────────────────────────────────────────────────
@@ -247,11 +291,51 @@ const alunosMeta = await Promise.all(todosAlunos.map(async a => {
   }
 }));
 
-// ── Modal ─────────────────────────────────────────────────────────────────
+// ── Modal de confirmação (apropriar aluno) ────────────────────────────────
+function confirmarApropriar(a) {
+  return new Promise(resolve => {
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    overlay.addEventListener("click", e => { if (e.target === overlay) { overlay.remove(); resolve(false); } });
+    document.addEventListener("keydown", function esc(e) {
+      if (e.key === "Escape") { overlay.remove(); resolve(false); document.removeEventListener("keydown", esc); }
+    });
+
+    overlay.innerHTML = `
+      <div class="modal-box" style="max-width:380px">
+        <div class="modal-header" style="border-bottom-color:#2563eb">
+          <div class="modal-avatar" style="background:#2563eb">${initials(a.nome_completo)}</div>
+          <div>
+            <div class="modal-name" style="font-size:1rem">Apropriar aluno</div>
+            <div class="modal-meta">Prof.: ${a.professor}</div>
+          </div>
+          <button class="modal-close" id="mac-fechar">×</button>
+        </div>
+        <div style="padding:1.1rem 1.4rem;font-size:.92rem;line-height:1.6">
+          Deseja apropriar <strong>${a.nome_completo}</strong> como seu aluno?<br>
+          <span style="font-size:.82rem;color:var(--theme-foreground-muted)">O aluno será transferido para a sua lista e ficará inativo até ser reativado.</span>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-ghost-modal" id="mac-cancelar">Cancelar</button>
+          <button class="btn-primary-modal" id="mac-confirmar"
+            style="background:#2563eb;color:#fff;border-color:#2563eb">Apropriar</button>
+        </div>
+      </div>`;
+
+    const fechar = () => { overlay.remove(); resolve(false); };
+    overlay.querySelector("#mac-fechar").addEventListener("click", fechar);
+    overlay.querySelector("#mac-cancelar").addEventListener("click", fechar);
+    overlay.querySelector("#mac-confirmar").addEventListener("click", () => { overlay.remove(); resolve(true); });
+
+    document.body.append(overlay);
+  });
+}
+
+// ── Modal de detalhe (radar) ───────────────────────────────────────────────
 function abrirModal(a) {
   const sessao   = a.ultimaSessao;
   const metricas = a.metricas;
-  const cor      = metricas ? radarColor(metricas) : { stroke:"#aaa", fill:"rgba(180,180,180,.12)" };
+  const cor      = statusColor(a);
   const fin      = a.finalizada === true ? "SIM" : a.finalizada === false ? "NÃO" : "—";
 
   const overlay = document.createElement("div");
@@ -316,10 +400,16 @@ function abrirModal(a) {
 // ── Estado UI ─────────────────────────────────────────────────────────────
 let filtro = "ativo";
 let busca  = "";
+let searchResultados = null; // null = usa alunosMeta local
+let searchSeq = 0;
+let searchDebounce = null;
+
+// Índice de alunos próprios com métricas já carregadas
+const alunoMetaById = new Map(alunosMeta.map(a => [a.id_aluno, a]));
 
 // Stats
-const statTotal   = document.createElement("div"); statTotal.className  = "stat-card";
-const statAtivos  = document.createElement("div"); statAtivos.className = "stat-card";
+const statTotal    = document.createElement("div"); statTotal.className    = "stat-card";
+const statAtivos   = document.createElement("div"); statAtivos.className   = "stat-card";
 const statComDados = document.createElement("div"); statComDados.className = "stat-card";
 
 function atualizarStats() {
@@ -334,11 +424,10 @@ atualizarStats();
 const searchInput = document.createElement("input");
 searchInput.type = "search"; searchInput.className = "search-input";
 searchInput.placeholder = "Buscar por nome…";
-searchInput.addEventListener("input", () => { busca = searchInput.value; renderGrid(); });
 
-const btnAtivos   = document.createElement("button"); btnAtivos.className = "filter-btn active"; btnAtivos.textContent = "Ativos";
-const btnTodos    = document.createElement("button"); btnTodos.className  = "filter-btn";        btnTodos.textContent  = "Todos";
-const btnInativos = document.createElement("button"); btnInativos.className = "filter-btn";      btnInativos.textContent = "Inativos";
+const btnAtivos   = document.createElement("button"); btnAtivos.className   = "filter-btn active f-ativo"; btnAtivos.textContent   = "Ativos";
+const btnTodos    = document.createElement("button"); btnTodos.className    = "filter-btn";                 btnTodos.textContent    = "Todos";
+const btnInativos = document.createElement("button"); btnInativos.className = "filter-btn f-inativo";       btnInativos.textContent = "Inativos";
 
 function setFiltro(f) {
   filtro = f;
@@ -354,13 +443,125 @@ btnInativos.addEventListener("click", () => setFiltro("inativo"));
 const grid = document.createElement("div");
 grid.className = "alunos-grid";
 
+function renderCard(a) {
+  const sessao  = a.ultimaSessao ?? null;
+  const metricas = a.metricas ?? null;
+  const outro   = a.is_meu === false;
+  const cor     = outro
+    ? { stroke:"#2563eb", fill:"rgba(37,99,235,.18)" }
+    : statusColor(a);
+
+  const card = document.createElement("div");
+  card.className = `aluno-card ${outro ? "status-outro" : (a.ativo ? "status-ativo" : "status-inativo")}`;
+
+  // ── Header ──
+  const header = document.createElement("div");
+  header.className = "card-header";
+  if (!outro) {
+    let badgeHTML = `<span class="badge-finalizada badge-sd">Sem sessão</span>`;
+    if (sessao) {
+      const fin = a.finalizada === true ? "SIM" : a.finalizada === false ? "NÃO" : "—";
+      badgeHTML = `<span class="badge-finalizada ${fin==="SIM"?"badge-sim":fin==="NÃO"?"badge-nao":"badge-sd"}">Atividade Finalizada: ${fin}</span>`;
+    }
+    header.innerHTML = `
+      <a class="card-header-link" href="/visualizacao/perfil-aluno?id=${a.id_aluno}">
+        <div class="avatar" style="background:${avatarColor(a.id_aluno)}">${initials(a.nome_completo)}</div>
+        <div class="card-info">
+          <div class="card-name">${a.nome_completo}</div>
+          <div class="card-meta">
+
+            <span>Sessões jogadas: ${a.totalSessoes}</span>
+          </div>
+          ${badgeHTML}
+        </div>
+      </a>`;
+  } else {
+    header.innerHTML = `
+      <div style="display:flex;gap:.75rem;align-items:flex-start;flex:1">
+        <div class="avatar" style="background:${avatarColor(a.id_aluno)}">${initials(a.nome_completo)}</div>
+        <div class="card-info">
+          <div class="card-name">${a.nome_completo}</div>
+          <div class="card-meta">
+            <span>${a.escolaridade || "—"}</span>
+            <span style="color:#2563eb;font-weight:600">Prof.: ${a.professor}</span>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  // ── Radar / placeholder ──
+  const radarWrap = document.createElement("div");
+  radarWrap.className = "card-radar";
+  if (!outro && metricas) {
+    const radarClickable = document.createElement("div");
+    radarClickable.className = "radar-wrap radar-clickable";
+    radarClickable.title = "Clique para ampliar";
+    radarClickable.innerHTML = makeRadar(metricas, cor);
+    radarClickable.addEventListener("click", () => abrirModal(a));
+    radarWrap.append(radarClickable);
+  } else {
+    const radarVazio = document.createElement("div");
+    radarVazio.className = "radar-wrap";
+    radarVazio.innerHTML = makeRadarVazio(cor);
+    radarWrap.append(radarVazio);
+  }
+
+  // ── Footer ──
+  const footer = document.createElement("div");
+  footer.className = "card-footer";
+  if (!outro) {
+    const sessaoHref = a.totalSessoes > 0 ? `/visualizacao/sessoes?aluno=${a.id_aluno}` : null;
+    footer.innerHTML = `
+      ${sessaoHref ? `<a class="btn-sessao" href="${sessaoHref}">Ver sessões (${a.totalSessoes})</a>` : `<span class="btn-sessao" style="opacity:.4;cursor:default">Sem sessões</span>`}
+      <a class="btn-ver" href="/visualizacao/perfil-aluno?id=${a.id_aluno}">Ver perfil →</a>`;
+  } else {
+    const spanLeft = document.createElement("span");
+    spanLeft.className = "btn-sessao";
+    spanLeft.style.cssText = "opacity:.4;cursor:default";
+    spanLeft.textContent = "Sem sessões";
+    footer.append(spanLeft);
+    if (!a.ativo) {
+      const btn = document.createElement("button");
+      btn.className = "btn-ver";
+      btn.textContent = "Apropriar aluno";
+      btn.style.cssText = "color:#2563eb;border-color:#93c5fd";
+      btn.addEventListener("click", async () => {
+        const ok = await confirmarApropriar(a);
+        if (!ok) return;
+        btn.disabled = true; btn.textContent = "Aguarde…";
+        try {
+          await apropriarAluno(a.id_aluno);
+          window.location.reload();
+        } catch(e) {
+          alert(`Erro: ${e.message}`);
+          btn.disabled = false; btn.textContent = "Apropriar aluno";
+        }
+      });
+      footer.append(btn);
+    }
+  }
+
+  card.append(header, radarWrap, footer);
+  return card;
+}
+
 function renderGrid() {
   grid.replaceChildren();
-  const q = busca.toLowerCase();
-  const lista = alunosMeta.filter(a => {
-    const ok = filtro === "todos" ? true : filtro === "ativo" ? a.ativo : !a.ativo;
-    return ok && (!q || a.nome_completo.toLowerCase().includes(q));
-  });
+  const q = busca.trim().toLowerCase();
+
+  let lista;
+  if (q) {
+    if (searchResultados === null) {
+      const p = document.createElement("p");
+      p.className = "empty-state"; p.textContent = "Buscando…";
+      grid.append(p); return;
+    }
+    lista = searchResultados;
+  } else {
+    lista = alunosMeta.filter(a =>
+      filtro === "todos" ? true : filtro === "ativo" ? a.ativo : !a.ativo
+    );
+  }
 
   if (!lista.length) {
     const p = document.createElement("p");
@@ -368,67 +569,41 @@ function renderGrid() {
     grid.append(p); return;
   }
 
-  for (const a of lista) {
-    const sessao   = a.ultimaSessao;
-    const metricas = a.metricas;
-    const cor      = metricas ? radarColor(metricas) : { stroke:"#aaa", fill:"rgba(180,180,180,.12)" };
-
-    // Badge atividade finalizada
-    let badgeHTML = `<span class="badge-finalizada badge-sd">Sem sessão</span>`;
-    if (sessao) {
-      const fin = a.finalizada === true ? "SIM" : a.finalizada === false ? "NÃO" : "—";
-      badgeHTML = `<span class="badge-finalizada ${fin==="SIM"?"badge-sim":fin==="NÃO"?"badge-nao":"badge-sd"}">Atividade Finalizada: ${fin}</span>`;
-    }
-
-    const card = document.createElement("div");
-    card.className = "aluno-card";
-    card.style.borderTop = `3px solid ${cor.stroke}`;
-
-    // Header
-    const header = document.createElement("div");
-    header.className = "card-header";
-    header.innerHTML = `
-      <a class="card-header-link" href="/visualizacao/perfil-aluno?id=${a.id_aluno}">
-        <div class="avatar" style="background:${avatarColor(a.id_aluno)}">${initials(a.nome_completo)}</div>
-        <div class="card-info">
-          <div class="card-name">${a.nome_completo}</div>
-          <div class="card-meta">
-            <span>Último mapa: ${sessao?.nome_mapa ?? "—"}</span>
-            <span>Sessões jogadas: ${a.totalSessoes}</span>
-          </div>
-          ${badgeHTML}
-        </div>
-      </a>`;
-
-    // Radar
-    const radarWrap = document.createElement("div");
-    radarWrap.className = "card-radar";
-
-    if (metricas) {
-      const radarClickable = document.createElement("div");
-      radarClickable.className = "radar-wrap radar-clickable";
-      radarClickable.title = "Clique para ampliar";
-      radarClickable.innerHTML = makeRadar(metricas, cor);
-      radarClickable.addEventListener("click", () => abrirModal(a));
-      radarWrap.append(radarClickable);
-    } else {
-      radarWrap.innerHTML = `<div style="height:120px;display:flex;align-items:center;justify-content:center;color:var(--theme-foreground-muted);font-size:.82rem;font-style:italic">Sem dados de análise</div>`;
-    }
-
-    // Footer
-    const footer = document.createElement("div");
-    footer.className = "card-footer";
-    const sessaoHref = a.totalSessoes > 0
-      ? `/visualizacao/sessoes?aluno=${a.id_aluno}`
-      : null;
-    footer.innerHTML = `
-      ${sessaoHref ? `<a class="btn-sessao" href="${sessaoHref}">Ver sessões (${a.totalSessoes})</a>` : `<span class="btn-sessao" style="opacity:.4;cursor:default">Sem sessões</span>`}
-      <a class="btn-ver" href="/visualizacao/perfil-aluno?id=${a.id_aluno}">Ver perfil →</a>`;
-
-    card.append(header, radarWrap, footer);
-    grid.append(card);
-  }
+  for (const a of lista) grid.append(renderCard(a));
 }
+
+searchInput.addEventListener("input", () => {
+  busca = searchInput.value;
+  clearTimeout(searchDebounce);
+  if (!busca.trim()) {
+    searchResultados = null;
+    renderGrid();
+    return;
+  }
+  renderGrid(); // mostra "Buscando…"
+  searchDebounce = setTimeout(async () => {
+    const seq = ++searchSeq;
+    try {
+      const { alunos } = await buscarTodosAlunos(busca.trim());
+      if (seq !== searchSeq) return;
+      searchResultados = alunos.map(a => {
+        if (a.is_meu) {
+          const meta = alunoMetaById.get(a.id_aluno);
+          return meta
+            ? { ...meta, is_meu: true }
+            : { ...a, is_meu: true, ultimaSessao: null, totalSessoes: 0, metricas: null, finalizada: null };
+        }
+        return { ...a, is_meu: false, ultimaSessao: null, totalSessoes: 0, metricas: null, finalizada: null };
+      });
+      renderGrid();
+    } catch(err) {
+      if (seq !== searchSeq) return;
+      const p = document.createElement("p");
+      p.className = "empty-state"; p.textContent = `Erro ao buscar: ${err.message}`;
+      grid.replaceChildren(p);
+    }
+  }, 350);
+});
 
 renderGrid();
 

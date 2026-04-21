@@ -6,8 +6,9 @@ toc: false
 <style>
   .page-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:1.5rem; flex-wrap:wrap; gap:.75rem; }
   .page-header h1 { margin:0; font-size:1.5rem; }
-  .btn { padding:.5rem 1.1rem; border-radius:6px; font-size:.9rem; font-weight:600; cursor:pointer; border:none; text-decoration:none; display:inline-block; }
-  .btn-primary { background:#1e293b; color:#fff; }
+  .btn { padding:.6rem 1.25rem; border-radius:6px; font-size:.95rem; font-weight:600; cursor:pointer; border:1.5px solid transparent; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; box-sizing:border-box; transition:opacity .15s; }
+  .btn-primary { background:var(--theme-foreground); border-color:var(--theme-foreground); }
+  a.btn-primary, button.btn-primary { color:var(--theme-background); }
   .btn-primary:hover { opacity:.82; }
   .filters { display:flex; gap:1rem; margin-bottom:1.25rem; align-items:center; flex-wrap:wrap; }
   .filter-label { font-size:.875rem; font-weight:600; color:var(--theme-foreground-muted); }
