@@ -2,8 +2,12 @@
 // Importar em qualquer página protegida com: import { requireAuth, getToken, logout } from "./auth.js";
 
 const API_BASE = "http://127.0.0.1:5000/api";
-const TOKEN_KEY = "om_token";
-const USER_KEY  = "om_user";
+const TOKEN_KEY      = "om_token";
+const USER_KEY       = "om_user";
+const LOGIN_TIME_KEY = "om_login_time";
+
+// Tempo máximo de sessão: 4 horas a partir do login
+const SESSION_EXPIRY_MS = 4 * 60 * 60 * 1000;
 
 /** Retorna o token JWT armazenado, ou null se não houver. */
 export function getToken() {
@@ -16,22 +20,36 @@ export function getUser() {
   return raw ? JSON.parse(raw) : null;
 }
 
-/** Salva token e dados do usuário após login bem-sucedido. */
+/** Retorna true se a sessão ainda está dentro do prazo de 4 horas. */
+export function isSessionValid() {
+  let loginTime = sessionStorage.getItem(LOGIN_TIME_KEY);
+  // Sessão legada (sem loginTime): adota o momento atual como início
+  // para não deslogar o usuário de forma inesperada.
+  if (!loginTime) {
+    loginTime = Date.now().toString();
+    sessionStorage.setItem(LOGIN_TIME_KEY, loginTime);
+  }
+  return (Date.now() - parseInt(loginTime, 10)) < SESSION_EXPIRY_MS;
+}
+
+/** Salva token, dados do usuário e o instante do login. */
 export function saveSession(token, usuario) {
   sessionStorage.setItem(TOKEN_KEY, token);
   sessionStorage.setItem(USER_KEY, JSON.stringify(usuario));
+  sessionStorage.setItem(LOGIN_TIME_KEY, Date.now().toString());
 }
 
 /** Remove a sessão e redireciona para o login. */
 export function logout() {
   sessionStorage.removeItem(TOKEN_KEY);
   sessionStorage.removeItem(USER_KEY);
+  sessionStorage.removeItem(LOGIN_TIME_KEY);
   window.location.href = "/login";
 }
 
 /**
- * Verifica se há sessão ativa.
- * Se não houver, redireciona para /login e lança um erro para interromper a execução da página.
+ * Verifica se há sessão ativa e se ainda está dentro do prazo de 4 horas.
+ * Se não houver ou estiver expirada, redireciona para /login.
  * Usar no topo de páginas protegidas:
  *   const user = requireAuth();
  */
@@ -41,6 +59,13 @@ export function requireAuth() {
   if (!token || !user) {
     window.location.href = "/login";
     throw new Error("Não autenticado — redirecionando para login.");
+  }
+  if (!isSessionValid()) {
+    sessionStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(USER_KEY);
+    sessionStorage.removeItem(LOGIN_TIME_KEY);
+    window.location.href = "/login?expirado=1";
+    throw new Error("Sessão expirada após 4 horas — redirecionando para login.");
   }
   return user;
 }
