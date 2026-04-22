@@ -1,5 +1,5 @@
 ---
-title: Nova Atividade
+title: Editar Atividade
 toc: false
 ---
 
@@ -16,24 +16,18 @@ toc: false
   .form-field textarea { resize:vertical; min-height:72px; }
   .divider { all:unset; display:block; border-top:1px solid var(--theme-foreground-faint); margin:1.5rem 0; }
 
-  /* Pool tabs */
   .pool-tabs { display:flex; gap:0; border-bottom:2px solid var(--theme-foreground-faintest); margin-bottom:.5rem; }
   .pool-tab { padding:.35rem .9rem; background:transparent; border:none; border-bottom:2px solid transparent; margin-bottom:-2px; font-size:.82rem; font-weight:600; cursor:pointer; color:var(--theme-foreground-muted); transition:all .15s; }
   .pool-tab.active { color:var(--theme-foreground); border-bottom-color:var(--theme-foreground); }
 
-  /* Mapa pool */
   .map-pool { display:flex; flex-direction:column; gap:.4rem; max-height:280px; overflow-y:auto; border:1px solid var(--theme-foreground-faintest); border-radius:8px; padding:.5rem; }
   .map-pool-item { display:flex; align-items:center; justify-content:space-between; padding:.4rem .65rem; border-radius:6px; background:var(--theme-background-alt); font-size:.85rem; cursor:pointer; user-select:none; gap:.5rem; }
   .map-pool-item:hover { background:var(--theme-foreground-faintest); }
   .map-pool-name { flex:1; }
   .map-pool-meta { font-size:.75rem; color:var(--theme-foreground-muted); white-space:nowrap; }
-  .btn-apropriar { padding:.15rem .5rem; font-size:.75rem; border-radius:4px; border:1px solid var(--theme-foreground-faint); background:transparent; color:var(--theme-foreground); cursor:pointer; white-space:nowrap; flex-shrink:0; }
-  .btn-apropriar:hover { background:var(--theme-background-alt); }
-  .btn-apropriar:disabled { opacity:.4; cursor:not-allowed; }
   .btn-add { padding:.15rem .5rem; font-size:.75rem; border-radius:4px; border:none; background:#1e293b; color:#fff; cursor:pointer; white-space:nowrap; flex-shrink:0; }
   .btn-add:hover { opacity:.82; }
 
-  /* Sequência */
   .seq-list { display:flex; flex-direction:column; gap:.4rem; min-height:56px; border:1px solid var(--theme-foreground-faintest); border-radius:8px; padding:.5rem; }
   .seq-item { display:flex; align-items:center; gap:.5rem; padding:.4rem .65rem; border:1px solid var(--theme-foreground-faintest); border-radius:6px; background:var(--theme-background); font-size:.85rem; }
   .seq-order { font-weight:700; color:var(--theme-foreground-muted); width:1.4rem; text-align:center; flex-shrink:0; }
@@ -43,14 +37,6 @@ toc: false
   .icon-btn:hover:not(:disabled) { background:var(--theme-background-alt); }
   .icon-btn:disabled { opacity:.3; cursor:not-allowed; }
 
-  /* Alunos */
-  .aluno-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:.5rem; }
-  .aluno-card { display:flex; align-items:center; gap:.6rem; padding:.5rem .75rem; border:1px solid var(--theme-foreground-faintest); border-radius:6px; cursor:pointer; user-select:none; transition:all .1s; font-size:.88rem; }
-  .aluno-card:hover { background:var(--theme-background-alt); }
-  .aluno-card.selected { border-color:var(--om-accent); background:#eff6ff; color:#1d4ed8; }
-  .check-icon { font-size:1rem; flex-shrink:0; }
-
-  /* Actions */
   .form-actions { display:flex; gap:.75rem; margin-top:1.75rem; align-items:stretch; }
   .btn { padding:.6rem 1.25rem; border-radius:6px; font-size:.95rem; font-weight:600; cursor:pointer; border:1.5px solid transparent; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; box-sizing:border-box; transition:opacity .15s; }
   .btn-primary { background:var(--theme-foreground); border-color:var(--theme-foreground); }
@@ -65,11 +51,16 @@ toc: false
   .hint { font-size:.78rem; color:var(--theme-foreground-muted); }
   .empty-hint { font-size:.85rem; color:var(--theme-foreground-muted); padding:.5rem .75rem; font-style:italic; }
   .col-label { font-size:.8rem; font-weight:600; margin-bottom:.4rem; color:var(--theme-foreground-muted); letter-spacing:.03em; }
+  .aluno-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:.5rem; }
+  .aluno-card { display:flex; align-items:center; gap:.6rem; padding:.5rem .75rem; border:1px solid var(--theme-foreground-faintest); border-radius:6px; cursor:pointer; user-select:none; transition:all .1s; font-size:.88rem; }
+  .aluno-card:hover { background:var(--theme-background-alt); }
+  .aluno-card.selected { border-color:var(--om-accent); background:#eff6ff; color:#1d4ed8; }
+  .check-icon { font-size:1rem; flex-shrink:0; }
 </style>
 
 ```js
 import { requireAuth, logout } from "../auth.js";
-import { fetchMeusMaps, fetchTodosMaps, fetchAlunos, criarAtividade, apropriarMapa } from "../api.js";
+import { fetchMeusMaps, fetchTodosMaps, fetchAtividade, fetchAlunos, editarAtividade, apropriarMapa } from "../api.js";
 
 const currentUser = requireAuth();
 const headerUser   = document.getElementById("header-user");
@@ -77,18 +68,23 @@ const headerLogout = document.getElementById("header-logout");
 if (headerUser)   headerUser.textContent = currentUser.nome;
 if (headerLogout) headerLogout.addEventListener("click", logout);
 
-// ── Carregar dados base ──────────────────────────────────────────────────────
-let meusMapas    = [];
-let outrosMapas  = [];
-let todosAlunos  = [];
+// ── Lê ?id= da URL ───────────────────────────────────────────────────────────
+const idAtividade = parseInt(new URLSearchParams(window.location.search).get("id"));
+if (!idAtividade) window.location.href = "/admin/atividades";
+
+// ── Carregar dados em paralelo ───────────────────────────────────────────────
+let meusMapas   = [];
+let outrosMapas = [];
+let todosAlunos = [];
+let atividade   = null;
 
 try {
-  [{ mapas: meusMapas }, { mapas: outrosMapas }, { alunos: todosAlunos }] = await Promise.all([
+  [{ mapas: meusMapas }, { mapas: outrosMapas }, { alunos: todosAlunos }, atividade] = await Promise.all([
     fetchMeusMaps(),
     fetchTodosMaps(),
     fetchAlunos(),
+    fetchAtividade(idAtividade),
   ]);
-  // Filtra mapas ativos e remove os próprios da lista de "outros"
   meusMapas   = meusMapas.filter(m => m.ativo);
   outrosMapas = outrosMapas.filter(m => m.ativo && m.id_criador !== currentUser.id_usuario);
 } catch (e) {
@@ -96,23 +92,22 @@ try {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// SEÇÃO 1 — Informações básicas
+// SEÇÃO 1 — Informações básicas (pré-preenchidas)
 // ══════════════════════════════════════════════════════════════════════════════
-const fNome      = html`<input type="text" placeholder="Ex: Navegação em ambiente interno" />`;
-const fDescricao = html`<textarea placeholder="Descreva o objetivo da atividade (opcional)"></textarea>`;
-const fPrevisao  = html`<input type="date" />`;
-
-// Define min = hoje para impedir datas passadas
-fPrevisao.min = new Date().toISOString().slice(0, 10);
+const fNome      = html`<input type="text" value="${atividade?.nome ?? ""}" placeholder="Nome da atividade" />`;
+const fDescricao = html`<textarea placeholder="Descrição (opcional)">${atividade?.descricao ?? ""}</textarea>`;
+const fPrevisao  = html`<input type="date" value="${atividade?.data_previsao_finalizacao ?? ""}" />`;
 
 // ══════════════════════════════════════════════════════════════════════════════
 // SEÇÃO 2 — Sequência de mapas
-// Containers criados com createElement para suportar mutação confiável.
 // ══════════════════════════════════════════════════════════════════════════════
-let sequencia    = [];   // [{id_mapa, nome_mapa}]
-let abaAtiva     = "meus"; // "meus" | "outros"
+// Pré-carrega sequência existente
+let sequencia = (atividade?.mapas ?? [])
+  .sort((a, b) => a.ordem - b.ordem)
+  .map(m => ({ id_mapa: m.id_mapa, nome_mapa: m.nome_mapa }));
 
-// Contêineres DOM — NÃO usar html`` para nós que sofrem replaceChildren()
+let abaAtiva = "meus";
+
 const poolContainer = document.createElement("div");
 const seqContainer  = document.createElement("div");
 seqContainer.className = "seq-list";
@@ -127,14 +122,12 @@ tabOutros.textContent = "Outros professores";
 
 tabMeus.addEventListener("click", () => {
   abaAtiva = "meus";
-  tabMeus.classList.add("active");
-  tabOutros.classList.remove("active");
+  tabMeus.classList.add("active"); tabOutros.classList.remove("active");
   renderPool();
 });
 tabOutros.addEventListener("click", () => {
   abaAtiva = "outros";
-  tabOutros.classList.add("active");
-  tabMeus.classList.remove("active");
+  tabOutros.classList.add("active"); tabMeus.classList.remove("active");
   renderPool();
 });
 
@@ -144,10 +137,8 @@ poolTabs.append(tabMeus, tabOutros);
 
 const pool = document.createElement("div");
 pool.className = "map-pool";
-
 poolContainer.append(poolTabs, pool);
 
-// ── render pool ──────────────────────────────────────────────────────────────
 function renderPool() {
   pool.replaceChildren();
   const idsNaSeq = new Set(sequencia.map(s => s.id_mapa));
@@ -158,151 +149,69 @@ function renderPool() {
       const p = document.createElement("p");
       p.className = "empty-hint";
       p.textContent = idsNaSeq.size ? "Todos os seus mapas já foram adicionados." : "Nenhum mapa ativo encontrado.";
-      pool.append(p);
-      return;
+      pool.append(p); return;
     }
     for (const m of lista) {
-      const item  = document.createElement("div");
-      item.className = "map-pool-item";
-
-      const nome  = document.createElement("span");
-      nome.className = "map-pool-name";
-      nome.textContent = m.nome_mapa;
-
-      const meta  = document.createElement("span");
-      meta.className = "map-pool-meta";
-      meta.textContent = m.data_criacao;
-
-      const btnAdd = document.createElement("button");
-      btnAdd.className = "btn-add";
-      btnAdd.textContent = "+ Adicionar";
-      btnAdd.addEventListener("click", () => {
+      const item = document.createElement("div"); item.className = "map-pool-item";
+      const nome = document.createElement("span"); nome.className = "map-pool-name"; nome.textContent = m.nome_mapa;
+      const meta = document.createElement("span"); meta.className = "map-pool-meta"; meta.textContent = m.data_criacao;
+      const btn  = document.createElement("button"); btn.className = "btn-add"; btn.textContent = "+ Adicionar";
+      btn.addEventListener("click", () => {
         sequencia.push({ id_mapa: m.id_mapa, nome_mapa: m.nome_mapa });
-        renderSeq();
-        renderPool();
+        renderSeq(); renderPool();
       });
-
-      item.append(nome, meta, btnAdd);
-      pool.append(item);
+      item.append(nome, meta, btn); pool.append(item);
     }
-
   } else {
-    // Aba "outros professores"
     if (!outrosMapas.length) {
-      const p = document.createElement("p");
-      p.className = "empty-hint";
+      const p = document.createElement("p"); p.className = "empty-hint";
       p.textContent = "Nenhum mapa ativo de outros professores disponível.";
-      pool.append(p);
-      return;
+      pool.append(p); return;
     }
     for (const m of outrosMapas) {
-      const jaNaSeq     = idsNaSeq.has(m.id_mapa);
-      const item         = document.createElement("div");
-      item.className     = "map-pool-item";
-
-      const nome         = document.createElement("span");
-      nome.className     = "map-pool-name";
-      nome.textContent   = m.nome_mapa;
-
-      const prof         = document.createElement("span");
-      prof.className     = "map-pool-meta";
-      prof.textContent   = m.nome_professor;
-
-      const btnApropriar = document.createElement("button");
-      btnApropriar.className   = "btn-apropriar";
-      btnApropriar.textContent = "Apropriar →";
-      btnApropriar.title       = "Cria uma cópia deste mapa na sua lista";
-      btnApropriar.addEventListener("click", async () => {
-        btnApropriar.disabled    = true;
-        btnApropriar.textContent = "…";
-        try {
-          const res = await apropriarMapa(m.id_mapa);
-          // Adiciona à lista de meus mapas e à sequência automaticamente
-          const novoMapa = { id_mapa: res.id_mapa, nome_mapa: res.nome_mapa, ativo: true, data_criacao: "" };
-          meusMapas.push(novoMapa);
-          outrosMapas = outrosMapas.filter(x => x.id_mapa !== m.id_mapa);
-          sequencia.push({ id_mapa: res.id_mapa, nome_mapa: res.nome_mapa });
-          abaAtiva = "meus";
-          tabMeus.classList.add("active");
-          tabOutros.classList.remove("active");
-          renderSeq();
-          renderPool();
-        } catch (e) {
-          alert(e.message);
-          btnApropriar.disabled    = false;
-          btnApropriar.textContent = "Apropriar →";
-        }
-      });
-
-      if (jaNaSeq) {
-        btnApropriar.disabled    = true;
-        btnApropriar.textContent = "Na sequência";
+      const jaNaSeq = idsNaSeq.has(m.id_mapa);
+      const item = document.createElement("div"); item.className = "map-pool-item";
+      const nome = document.createElement("span"); nome.className = "map-pool-name"; nome.textContent = m.nome_mapa;
+      const prof = document.createElement("span"); prof.className = "map-pool-meta"; prof.textContent = m.nome_professor;
+      const btn  = document.createElement("button"); btn.className = "btn-add"; btn.textContent = jaNaSeq ? "Na sequência" : "+ Adicionar";
+      btn.disabled = jaNaSeq;
+      if (!jaNaSeq) {
+        btn.addEventListener("click", async () => {
+          btn.disabled = true; btn.textContent = "…";
+          try {
+            const res = await apropriarMapa(m.id_mapa);
+            const novoMapa = { id_mapa: res.id_mapa, nome_mapa: res.nome_mapa, ativo: true, data_criacao: "" };
+            meusMapas.push(novoMapa);
+            outrosMapas = outrosMapas.filter(x => x.id_mapa !== m.id_mapa);
+            sequencia.push({ id_mapa: res.id_mapa, nome_mapa: res.nome_mapa });
+            abaAtiva = "meus"; tabMeus.classList.add("active"); tabOutros.classList.remove("active");
+            renderSeq(); renderPool();
+          } catch (e) { alert(e.message); btn.disabled = false; btn.textContent = "+ Adicionar"; }
+        });
       }
-
-      item.append(nome, prof, btnApropriar);
-      pool.append(item);
+      item.append(nome, prof, btn); pool.append(item);
     }
   }
 }
 
-// ── render sequência ─────────────────────────────────────────────────────────
 function renderSeq() {
   seqContainer.replaceChildren();
   if (!sequencia.length) {
-    const p = document.createElement("p");
-    p.className = "empty-hint";
-    p.textContent = "Nenhum mapa adicionado ainda.";
-    seqContainer.append(p);
-    return;
+    const p = document.createElement("p"); p.className = "empty-hint";
+    p.textContent = "Nenhum mapa adicionado ainda."; seqContainer.append(p); return;
   }
   sequencia.forEach((s, i) => {
-    const item = document.createElement("div");
-    item.className = "seq-item";
-
-    const num = document.createElement("span");
-    num.className = "seq-order";
-    num.textContent = i + 1;
-
-    const nome = document.createElement("span");
-    nome.className = "seq-name";
-    nome.textContent = s.nome_mapa;
-
-    const btnUp   = document.createElement("button");
-    btnUp.className   = "icon-btn";
-    btnUp.textContent = "↑";
-    btnUp.title       = "Subir";
-    btnUp.disabled    = (i === 0);
-    btnUp.addEventListener("click", () => {
-      [sequencia[i - 1], sequencia[i]] = [sequencia[i], sequencia[i - 1]];
-      renderSeq(); renderPool();
-    });
-
-    const btnDown   = document.createElement("button");
-    btnDown.className   = "icon-btn";
-    btnDown.textContent = "↓";
-    btnDown.title       = "Descer";
-    btnDown.disabled    = (i === sequencia.length - 1);
-    btnDown.addEventListener("click", () => {
-      [sequencia[i + 1], sequencia[i]] = [sequencia[i], sequencia[i + 1]];
-      renderSeq(); renderPool();
-    });
-
-    const btnRem   = document.createElement("button");
-    btnRem.className   = "icon-btn";
-    btnRem.textContent = "✕";
-    btnRem.title       = "Remover";
-    btnRem.style.color = "#b91c1c";
-    btnRem.addEventListener("click", () => {
-      sequencia.splice(i, 1);
-      renderSeq(); renderPool();
-    });
-
-    const btns = document.createElement("div");
-    btns.className = "seq-btns";
-    btns.append(btnUp, btnDown, btnRem);
-
-    item.append(num, nome, btns);
-    seqContainer.append(item);
+    const item = document.createElement("div"); item.className = "seq-item";
+    const num  = document.createElement("span"); num.className = "seq-order"; num.textContent = i + 1;
+    const nome = document.createElement("span"); nome.className = "seq-name";  nome.textContent = s.nome_mapa;
+    const btnUp   = document.createElement("button"); btnUp.className = "icon-btn"; btnUp.textContent = "↑"; btnUp.title = "Subir";   btnUp.disabled = (i === 0);
+    const btnDown = document.createElement("button"); btnDown.className = "icon-btn"; btnDown.textContent = "↓"; btnDown.title = "Descer"; btnDown.disabled = (i === sequencia.length - 1);
+    const btnRem  = document.createElement("button"); btnRem.className = "icon-btn"; btnRem.textContent = "✕"; btnRem.title = "Remover"; btnRem.style.color = "#b91c1c";
+    btnUp.addEventListener("click",   () => { [sequencia[i-1], sequencia[i]] = [sequencia[i], sequencia[i-1]]; renderSeq(); renderPool(); });
+    btnDown.addEventListener("click", () => { [sequencia[i+1], sequencia[i]] = [sequencia[i], sequencia[i+1]]; renderSeq(); renderPool(); });
+    btnRem.addEventListener("click",  () => { sequencia.splice(i, 1); renderSeq(); renderPool(); });
+    const btns = document.createElement("div"); btns.className = "seq-btns"; btns.append(btnUp, btnDown, btnRem);
+    item.append(num, nome, btns); seqContainer.append(item);
   });
 }
 
@@ -329,14 +238,8 @@ function renderAlunos() {
     const sel  = alunosSelecionados.has(a.id_aluno);
     const card = document.createElement("div");
     card.className = "aluno-card" + (sel ? " selected" : "");
-
-    const icon = document.createElement("span");
-    icon.className = "check-icon";
-    icon.textContent = sel ? "✔" : "○";
-
-    const nome = document.createElement("span");
-    nome.textContent = a.nome_completo;
-
+    const icon = document.createElement("span"); icon.className = "check-icon"; icon.textContent = sel ? "✔" : "○";
+    const nome = document.createElement("span"); nome.textContent = a.nome_completo;
     card.append(icon, nome);
     card.addEventListener("click", () => {
       if (alunosSelecionados.has(a.id_aluno)) alunosSelecionados.delete(a.id_aluno);
@@ -352,26 +255,21 @@ renderAlunos();
 // ══════════════════════════════════════════════════════════════════════════════
 // SUBMIT
 // ══════════════════════════════════════════════════════════════════════════════
-const btnSalvar = html`<button class="btn btn-primary">Criar Atividade</button>`;
+const btnSalvar = html`<button class="btn btn-primary">Salvar alterações</button>`;
 const alertDiv  = html`<div></div>`;
 
 btnSalvar.addEventListener("click", async () => {
   const nome = fNome.value.trim();
   if (!nome) {
-    alertDiv.className = "alert alert-error";
-    alertDiv.textContent = "Informe o nome da atividade.";
-    return;
+    alertDiv.className = "alert alert-error"; alertDiv.textContent = "Informe o nome da atividade."; return;
   }
   if (!sequencia.length) {
-    alertDiv.className = "alert alert-error";
-    alertDiv.textContent = "Adicione ao menos um mapa à sequência.";
-    return;
+    alertDiv.className = "alert alert-error"; alertDiv.textContent = "Adicione ao menos um mapa à sequência."; return;
   }
-  btnSalvar.disabled    = true;
-  btnSalvar.textContent = "Criando…";
+  btnSalvar.disabled = true; btnSalvar.textContent = "Salvando…";
   alertDiv.className = ""; alertDiv.textContent = "";
   try {
-    await criarAtividade({
+    await editarAtividade(idAtividade, {
       nome,
       descricao: fDescricao.value.trim(),
       data_previsao_finalizacao: fPrevisao.value || null,
@@ -379,16 +277,13 @@ btnSalvar.addEventListener("click", async () => {
       alunos: [...alunosSelecionados],
     });
     alertDiv.className   = "alert alert-success";
-    alertDiv.textContent = `Atividade "${nome}" criada com sucesso!`;
-    fNome.value = ""; fDescricao.value = "";
-    sequencia = []; alunosSelecionados.clear();
-    renderSeq(); renderPool(); renderAlunos();
+    alertDiv.textContent = "Atividade atualizada com sucesso!";
+    setTimeout(() => window.location.href = "/admin/atividades", 1200);
   } catch (e) {
     alertDiv.className   = "alert alert-error";
     alertDiv.textContent = e.message;
   } finally {
-    btnSalvar.disabled    = false;
-    btnSalvar.textContent = "Criar Atividade";
+    btnSalvar.disabled = false; btnSalvar.textContent = "Salvar alterações";
   }
 });
 
@@ -397,7 +292,7 @@ btnSalvar.addEventListener("click", async () => {
 // ══════════════════════════════════════════════════════════════════════════════
 display(html`<div>
   <div class="page-header">
-    <h1>Nova Atividade</h1>
+    <h1>Editar Atividade</h1>
     <a class="btn-ghost btn" href="/admin/atividades">← Voltar</a>
   </div>
 
@@ -414,7 +309,7 @@ display(html`<div>
     <div class="form-field">
       <label>Previsão de finalização</label>
       ${fPrevisao}
-      <span class="hint">Data estimada para encerramento da atividade. A finalização real será registrada ao desativar.</span>
+      <span class="hint">Data estimada para encerramento da atividade.</span>
     </div>
   </div>
 
@@ -424,7 +319,6 @@ display(html`<div>
     <p class="section-title"><span class="section-num">2</span> Sequência de mapas</p>
     <p class="hint" style="margin-bottom:.75rem">
       Clique em "+ Adicionar" para incluir um mapa à sequência. Use ↑ ↓ para reordenar.
-      Na aba <strong>Outros professores</strong> você pode apropriar mapas para sua biblioteca.
     </p>
     <div style="display:flex;flex-direction:column;gap:1.25rem">
       <div>

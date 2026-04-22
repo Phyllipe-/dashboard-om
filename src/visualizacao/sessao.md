@@ -4,8 +4,10 @@ toc: false
 ---
 
 <style>
-  .sessao-layout { display:grid; grid-template-columns:1fr 1fr; gap:1rem; align-items:start; margin-top:1rem; }
-  @media(max-width:800px) { .sessao-layout { grid-template-columns:1fr; } }
+  .sessao-layout { display:grid; grid-template-columns:repeat(3,1fr); gap:1rem; align-items:start; margin-top:1rem; }
+  @media(max-width:900px) { .sessao-layout { grid-template-columns:1fr 1fr; } }
+  @media(max-width:600px) { .sessao-layout { grid-template-columns:1fr; } }
+  .col-imagens { display:flex; flex-direction:column; gap:1rem; }
 
   .painel { background:var(--theme-background); border:1px solid var(--theme-foreground-faintest); border-radius:12px; overflow:hidden; }
   .painel-titulo { font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--theme-foreground-muted); padding:.65rem 1rem; border-bottom:1px solid var(--theme-foreground-faintest); }
@@ -39,6 +41,15 @@ toc: false
   .info-table tr:last-child td { border-bottom:none; }
   .info-table .lbl { color:var(--theme-foreground-muted); width:50%; }
   .info-table .val { font-weight:600; text-align:right; }
+
+  .info-group { border:1px solid var(--theme-foreground-faintest); border-radius:8px; overflow:hidden; margin:.75rem 0; }
+  .info-group-header { background:var(--theme-background-alt); padding:.28rem .75rem; font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:var(--theme-foreground-muted); }
+  .info-group-row { display:flex; justify-content:space-between; align-items:center; padding:.32rem .75rem; font-size:.85rem; border-top:1px solid var(--theme-foreground-faintest); gap:.5rem; }
+  .info-group-lbl { color:var(--theme-foreground-muted); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .info-group-val { font-weight:600; flex-shrink:0; }
+  .info-group-empty { padding:.32rem .75rem; font-size:.84rem; color:var(--theme-foreground-faint); font-style:italic; border-top:1px solid var(--theme-foreground-faintest); }
+
+  .info-divider { border:none; border-top:1px solid var(--theme-foreground-faintest); margin:.75rem 0 .5rem; }
 </style>
 
 ```js
@@ -229,36 +240,108 @@ function infoRow(label, value, color) {
   return tr;
 }
 
-const table = document.createElement("table"); table.className = "info-table";
-table.append(
-  infoRow("Mapa",        sessao.nome_mapa),
-  infoRow("Data",        sessao.data),
-  infoRow("Tempo total", fmtTempo(sessao.tempo_sessao)),
-  infoRow("Ações",       sessao.total_acoes ?? "—"),
-  infoRow("Colisões",    sessao.total_colisoes ?? "—", sessao.total_colisoes > 0 ? "#b91c1c" : null),
-  infoRow("Objetivos",   `${sessao.objetivos_concluidos ?? "—"} / ${sessao.total_objetivos ?? "—"}`),
+function makeInfoGroup(title, rows) {
+  // rows: [{ label, value (string | Element), color? }]
+  const wrap = document.createElement("div"); wrap.className = "info-group";
+  const hdr  = document.createElement("div"); hdr.className = "info-group-header"; hdr.textContent = title;
+  wrap.append(hdr);
+  if (rows.length === 0) {
+    const empty = document.createElement("div"); empty.className = "info-group-empty"; empty.textContent = "Nenhuma";
+    wrap.append(empty);
+  } else {
+    for (const row of rows) {
+      const r   = document.createElement("div"); r.className = "info-group-row";
+      const lbl = document.createElement("span"); lbl.className = "info-group-lbl"; lbl.textContent = row.label;
+      const val = document.createElement("span"); val.className = "info-group-val";
+      if (row.color) val.style.color = row.color;
+      if (row.value instanceof Element) val.append(row.value);
+      else val.textContent = row.value ?? "—";
+      r.append(lbl, val);
+      wrap.append(r);
+    }
+  }
+  return wrap;
+}
+
+function makeBadgeSmall(ok) {
+  const s = document.createElement("span");
+  s.className = `badge ${ok ? "badge-ok" : "badge-no"}`;
+  s.style.fontSize = ".7rem";
+  s.textContent = ok ? "Concluído" : "Não concluído";
+  return s;
+}
+
+// Agrega dados do log
+const ACAO_NOME = { 0: "Passos", 1: "Giros" };
+const logObjs   = sessao.dados_log?.objectives ?? [];
+
+const acoesMap = {};
+for (const obj of logObjs) {
+  for (const a of (obj.actions ?? [])) {
+    const t = a.actionType ?? "?";
+    acoesMap[t] = (acoesMap[t] ?? 0) + 1;
+  }
+}
+
+const colisMap = {};
+for (const obj of logObjs) {
+  for (const c of (obj.collisions ?? [])) {
+    const id = c.objectID ?? "?";
+    colisMap[id] = (colisMap[id] ?? 0) + 1;
+  }
+}
+
+// ── Tabela topo: Mapa + Data ───────────────────────────────────────────────
+const tableTop = document.createElement("table"); tableTop.className = "info-table";
+tableTop.append(
+  infoRow("Mapa", sessao.nome_mapa),
+  infoRow("Data", sessao.data),
 );
+
+// ── Cards: Ações, Colisões, Objetivos ─────────────────────────────────────
+const acoesRows = Object.entries(acoesMap)
+  .sort((a, b) => +a[0] - +b[0])
+  .map(([tipo, qt]) => ({ label: ACAO_NOME[tipo] ?? `Tipo ${tipo}`, value: String(qt) }));
+
+const colisRows = Object.entries(colisMap)
+  .sort((a, b) => b[1] - a[1])
+  .map(([objId, qt]) => ({ label: objId, value: String(qt), color: "#b91c1c" }));
+
+const objRows = logObjs.map(obj => ({
+  label: obj.objectiveName ?? "?",
+  value: makeBadgeSmall((obj.startTime ?? 0) > 0),
+}));
+
+const groupAcoes = makeInfoGroup("Ações", acoesRows);
+const groupColis = makeInfoGroup("Colisões", colisRows);
+const groupObjs  = makeInfoGroup("Objetivos", objRows);
+
+// ── Tabela base: métricas + resultado ─────────────────────────────────────
+const divider = document.createElement("hr"); divider.className = "info-divider";
+const tableBot = document.createElement("table"); tableBot.className = "info-table";
 if (m) {
-  table.append(
-    infoRow("Precisão",  `${Math.round(m.precisao)}%`),
+  tableBot.append(
+    infoRow("Precisão",    `${Math.round(m.precisao)}%`),
     infoRow("Objetivos %", `${Math.round(m.objetivos)}%`),
-    infoRow("Fluidez",   `${Math.round(m.fluidez)}%`),
+    infoRow("Fluidez",     `${Math.round(m.fluidez)}%`),
   );
 }
 const badgeClone = badge.cloneNode(true);
-table.append(infoRow("Resultado", badgeClone));
-painelInfoCorpo.append(table);
+tableBot.append(infoRow("Resultado", badgeClone));
+
+painelInfoCorpo.append(tableTop, groupAcoes, groupColis, groupObjs, divider, tableBot);
 painelInfo.append(painelInfoTitulo, painelInfoCorpo);
 
 // ── Layout ────────────────────────────────────────────────────────────────
+const colImagens = document.createElement("div"); colImagens.className = "col-imagens";
+colImagens.append(painelMini, painelRender);
+
 const layout = document.createElement("div"); layout.className = "sessao-layout";
-layout.append(painelMini, painelInfo, painelRender, painelRadar);
+layout.append(colImagens, painelInfo, painelRadar);
 
 display(html`<div>
   <div class="page-header">
     <h1 style="margin:0;font-size:1.3rem">Sessão #${id_log} — ${sessao.nome_mapa}</h1>
-    ${badge}
-    <span style="margin-left:auto;font-size:.8rem;color:var(--theme-foreground-muted)">${sessao.data}</span>
   </div>
   ${statRow}
   ${layout}

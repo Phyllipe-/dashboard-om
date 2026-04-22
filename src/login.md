@@ -127,6 +127,10 @@ const card = html`<div class="login-page">
     </div>
     ${btnEntrar}
     ${erroDiv}
+    <p style="margin-top:1.25rem;font-size:.82rem;text-align:center;color:var(--theme-foreground-muted);">
+      Ainda não tem conta?
+      <a href="/registro" style="color:#4a90e2;font-weight:600;text-decoration:none;">Cadastre-se</a>
+    </p>
   </div>
 </div>`;
 
@@ -163,4 +167,10 @@ async function tentarLogin() {
 btnEntrar.addEventListener("click", tentarLogin);
 emailInput.addEventListener("keydown", e => { if (e.key === "Enter") tentarLogin(); });
 senhaInput.addEventListener("keydown", e => { if (e.key === "Enter") tentarLogin(); });
+
+// Exibe aviso se redirecionado por sessão expirada
+if (new URLSearchParams(window.location.search).get("expirado") === "1") {
+  erroDiv.className = "login-error";
+  erroDiv.textContent = "Sua sessão expirou após 4 horas. Por favor, faça login novamente.";
+}
 ```
