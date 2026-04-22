@@ -36,7 +36,7 @@ toc: false
   .btn-primary:hover { opacity:.82; }
   .btn-ghost { background:transparent; color:var(--theme-foreground); border-color:var(--theme-foreground-faint); }
   .btn-ghost:hover { background:var(--theme-background-alt); }
-  .btn-sm { padding:.22rem .6rem; font-size:.8rem; border-radius:5px; border:1px solid var(--theme-foreground-faint); background:transparent; color:var(--theme-foreground); cursor:pointer; }
+  .btn-sm { padding:.22rem .6rem; font-size:.8rem; border-radius:5px; border:1px solid var(--theme-foreground-faint); background:transparent; color:var(--theme-foreground); cursor:pointer; display:inline-flex; align-items:center; gap:.25rem; white-space:nowrap; box-sizing:border-box; }
   .btn-sm:hover { background:var(--theme-background-alt); }
   .btn-sm:disabled { opacity:.4; cursor:not-allowed; }
 
@@ -49,6 +49,12 @@ toc: false
 
   .ext-link { display:inline-flex; align-items:center; gap:.4rem; }
   .ext-link::after { content:"↗"; font-size:.8rem; }
+
+  .badge-original { background:#dbeafe; color:#1d4ed8; }
+  .badge-copia    { background:#f3e8ff; color:#7e22ce; }
+  .td-acoes { display:flex; gap:.35rem; align-items:stretch; flex-wrap:nowrap; white-space:nowrap; }
+  .maps-table th:last-child,
+  .maps-table td:last-child { white-space:nowrap; width:1%; }
 
   /* Preview thumbnail */
   .map-thumb {
@@ -86,7 +92,7 @@ toc: false
 
 ```js
 import { requireAuth, logout } from "../auth.js";
-import { fetchTodosMaps, fetchMeusMaps, toggleAtivoMapa } from "../api.js";
+import { fetchTodosMaps, fetchMeusMaps, toggleAtivoMapa, apropriarMapa, checkUsoMapa, copiarMapaProprio } from "../api.js";
 
 const API_BASE = "http://127.0.0.1:5000/api";
 
@@ -151,6 +157,35 @@ function celulaPreview(mapa) {
   return html`<td>${placeholder}</td>`;
 }
 
+// --- Conjuntos auxiliares ---
+const meusIdsSet      = new Set(meusMapas.map(m => m.id_mapa));
+const minhasOrigensSet = new Set(meusMapas.filter(m => m.id_mapa_original).map(m => m.id_mapa_original));
+
+// --- Download ---
+function baixarMapa(mapa) {
+  const token = sessionStorage.getItem("om_token");
+  const a = document.createElement("a");
+  a.href = `${API_BASE}/treinos/mapas/${mapa.id_mapa}/download?token=${encodeURIComponent(token)}`;
+  a.download = `${mapa.nome_mapa}.xml`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+// --- Badge de origem ---
+function origemBadge(mapa) {
+  if (!mapa.id_mapa_original) {
+    return `<span class="badge badge-original">Original</span>`;
+  }
+  let tooltip = "";
+  if (mapa.nome_mapa_original) {
+    tooltip = `Copiado de: ${mapa.nome_mapa_original}`;
+    if (mapa.nome_professor_original) tooltip += `\nCriador: ${mapa.nome_professor_original}`;
+  }
+  const attr = tooltip ? `title="${tooltip}"` : "";
+  return `<span class="badge badge-copia" ${attr}>Cópia</span>`;
+}
+
 // --- Stats ---
 const statTotal  = html`<div class="stat-card"><div class="stat-value"></div><div class="stat-label">Total (todos)</div></div>`;
 const statMeus   = html`<div class="stat-card"><div class="stat-value"></div><div class="stat-label">Meus mapas</div></div>`;
@@ -162,15 +197,67 @@ function atualizarStats() {
   statAtivos.querySelector(".stat-value").textContent = meusMapas.filter(m => m.ativo).length;
 }
 
-// --- Tabela todos os mapas (somente leitura) ---
+// --- Tabela todos os mapas ---
 const tbodyTodos = html`<tbody></tbody>`;
 function renderTodos() {
   tbodyTodos.innerHTML = "";
   if (!todosMapas.length) {
-    tbodyTodos.append(html`<tr><td colspan="6" class="empty-state">Nenhum mapa cadastrado.</td></tr>`);
+    tbodyTodos.append(html`<tr><td colspan="8" class="empty-state">Nenhum mapa cadastrado.</td></tr>`);
     return;
   }
   for (const m of todosMapas) {
+    const eMeu      = meusIdsSet.has(m.id_mapa);
+    const jaCopiado = minhasOrigensSet.has(m.id_mapa);
+
+    // Botão Download
+    const btnDown = document.createElement("button");
+    btnDown.className = "btn-sm";
+    btnDown.textContent = "Download";
+    btnDown.disabled = !m.ativo;
+    btnDown.title = m.ativo ? "Baixar mapa" : "Apenas mapas ativos podem ser baixados";
+    if (m.ativo) btnDown.addEventListener("click", () => baixarMapa(m));
+
+    // Botão Copiar
+    let acaoCopiar;
+    if (eMeu) {
+      acaoCopiar = html`<span class="btn-sm" style="opacity:.4;cursor:default">Meu mapa</span>`;
+    } else if (jaCopiado) {
+      acaoCopiar = html`<button class="btn-sm" disabled style="opacity:.4">Já copiado</button>`;
+    } else {
+      acaoCopiar = html`<button class="btn-sm">Copiar</button>`;
+      acaoCopiar.addEventListener("click", async () => {
+        const acao = await modalEditar(
+          "Copiar mapa",
+          `Copiar <strong>${m.nome_mapa}</strong> para Meus mapas?<br><br>
+           Uma cópia ativa será criada com você como responsável. O original permanece inalterado.`,
+          [
+            { label: "Cancelar", valor: "cancelar", primary: false },
+            { label: "Copiar",   valor: "copiar",   primary: true  },
+          ]
+        );
+        if (acao !== "copiar") return;
+        acaoCopiar.disabled = true; acaoCopiar.textContent = "Copiando…";
+        try {
+          const res = await apropriarMapa(m.id_mapa);
+          meusMapas.push({ ...m, id_mapa: res.id_mapa, nome_mapa: res.nome_mapa, id_mapa_original: m.id_mapa, nome_mapa_original: m.nome_mapa });
+          meusIdsSet.add(res.id_mapa);
+          minhasOrigensSet.add(m.id_mapa);
+          atualizarStats(); renderTodos(); renderMeus();
+        } catch(e) {
+          alert("Erro: " + e.message);
+          acaoCopiar.disabled = false; acaoCopiar.textContent = "Copiar";
+        }
+      });
+    }
+
+    const tdAcoes = html`<td></td>`;
+    const divAcoes = document.createElement("div"); divAcoes.className = "td-acoes";
+    divAcoes.append(btnDown, acaoCopiar);
+    tdAcoes.append(divAcoes);
+
+    const tdOrigem = document.createElement("td");
+    tdOrigem.innerHTML = origemBadge(m);
+
     const tr = html`<tr></tr>`;
     tr.append(
       celulaPreview(m),
@@ -178,10 +265,109 @@ function renderTodos() {
       html`<td style="color:var(--theme-foreground-muted);font-size:.85rem">${m.nome_professor}</td>`,
       html`<td style="color:var(--theme-foreground-muted);font-size:.85rem">${m.data_criacao}</td>`,
       html`<td><span class="badge ${m.ativo ? "badge-ativo" : "badge-inativo"}">${m.ativo ? "Ativo" : "Inativo"}</span></td>`,
-      html`<td style="color:var(--theme-foreground-muted);font-size:.8rem">${m.caminho_arquivo_xml}</td>`,
+      tdOrigem,
+      tdAcoes,
     );
     tbodyTodos.append(tr);
   }
+}
+
+// --- Modal informativo (cenário 1 e 2) ---
+function modalEditar(titulo, corpo, acoes) {
+  return new Promise(resolve => {
+    const overlay = document.createElement("div");
+    overlay.className = "lightbox-overlay";
+    overlay.style.cssText = "backdrop-filter:blur(3px)";
+
+    const box = document.createElement("div");
+    box.className = "lightbox-box";
+    box.style.cssText = "max-width:420px;gap:.85rem;cursor:default";
+
+    const h = document.createElement("p"); h.className = "lightbox-title"; h.textContent = titulo;
+    const p = document.createElement("p"); p.style.cssText = "font-size:.9rem;line-height:1.6;color:var(--theme-foreground-muted);margin:0"; p.innerHTML = corpo;
+
+    const footer = document.createElement("div");
+    footer.style.cssText = "display:flex;gap:.6rem;justify-content:flex-end;margin-top:.25rem";
+
+    const fechar = () => { overlay.remove(); resolve(null); };
+    overlay.addEventListener("click", e => { if (e.target === overlay) fechar(); });
+    document.addEventListener("keydown", function esc(e) {
+      if (e.key === "Escape") { fechar(); document.removeEventListener("keydown", esc); }
+    });
+
+    acoes.forEach(({ label, valor, primary }) => {
+      const btn = document.createElement("button");
+      btn.className = primary ? "btn btn-primary" : "btn btn-ghost";
+      btn.style.cssText = "padding:.45rem 1rem;font-size:.875rem";
+      btn.textContent = label;
+      btn.addEventListener("click", () => { overlay.remove(); resolve(valor); });
+      footer.append(btn);
+    });
+
+    box.append(h, p, footer);
+    overlay.append(box);
+    document.body.append(overlay);
+  });
+}
+
+// --- Editar mapa: fluxo com 3 cenários ---
+async function editarMapa(mapa, btnEditar) {
+  btnEditar.disabled = true; btnEditar.textContent = "Verificando…";
+  let uso;
+  try {
+    uso = await checkUsoMapa(mapa.id_mapa);
+  } catch(e) {
+    alert("Erro ao verificar uso do mapa: " + e.message);
+    btnEditar.disabled = false; btnEditar.textContent = "Editar";
+    return;
+  }
+
+  const token = sessionStorage.getItem("om_token");
+  const e3Url = id => `http://localhost:5173/?mode=edit&id=${id}&token=${encodeURIComponent(token)}`;
+
+  // Cenário 1 — mapa em atividade ATIVA
+  if (uso.em_atividade_ativa) {
+    const nomes = uso.atividades.filter(a => a.ativo).map(a => `<strong>${a.nome}</strong>`).join(", ");
+    await modalEditar(
+      "Edição não permitida",
+      `Este mapa está sendo usado em ${uso.atividades.filter(a=>a.ativo).length > 1 ? "atividades ativas" : "uma atividade ativa"}: ${nomes}.<br><br>
+       Enquanto houver atividades ativas usando este mapa, ele não pode ser editado.<br>
+       <span style="color:#16a34a">Sugestão: crie um novo mapa no Editor E3.</span>`,
+      [{ label: "Entendi", valor: null, primary: true }]
+    );
+    btnEditar.disabled = false; btnEditar.textContent = "Editar";
+    return;
+  }
+
+  // Cenário 2 — mapa em atividade INATIVA
+  if (uso.em_atividade_inativa) {
+    const nomes = uso.atividades.map(a => `<strong>${a.nome}</strong>`).join(", ");
+    const acao = await modalEditar(
+      "Editar com segurança",
+      `Este mapa está em ${uso.atividades.length > 1 ? "atividades inativas" : "uma atividade inativa"}: ${nomes}.<br><br>
+       Para preservar o original, será criada uma <strong>cópia ativa</strong> que você editará no E3.
+       O mapa original não será alterado.`,
+      [
+        { label: "Cancelar",       valor: "cancelar", primary: false },
+        { label: "Criar cópia e editar", valor: "copiar",   primary: true  },
+      ]
+    );
+    if (acao !== "copiar") { btnEditar.disabled = false; btnEditar.textContent = "Editar"; return; }
+
+    try {
+      btnEditar.textContent = "Criando cópia…";
+      const copia = await copiarMapaProprio(mapa.id_mapa);
+      window.open(e3Url(copia.id_mapa), "_blank");
+    } catch(e) {
+      alert("Erro ao criar cópia: " + e.message);
+    }
+    btnEditar.disabled = false; btnEditar.textContent = "Editar";
+    return;
+  }
+
+  // Cenário 3 — mapa NÃO está em nenhuma atividade
+  window.open(e3Url(mapa.id_mapa), "_blank");
+  btnEditar.disabled = false; btnEditar.textContent = "Editar";
 }
 
 // --- Tabela meus mapas (com toggle) ---
@@ -189,10 +375,17 @@ const tbodyMeus = html`<tbody></tbody>`;
 function renderMeus() {
   tbodyMeus.innerHTML = "";
   if (!meusMapas.length) {
-    tbodyMeus.append(html`<tr><td colspan="5" class="empty-state">Você ainda não criou nenhum mapa.</td></tr>`);
+    tbodyMeus.append(html`<tr><td colspan="6" class="empty-state">Você ainda não criou nenhum mapa.</td></tr>`);
     return;
   }
   for (const m of meusMapas) {
+    const btnDown = document.createElement("button");
+    btnDown.className = "btn-sm";
+    btnDown.textContent = "Download";
+    btnDown.disabled = !m.ativo;
+    btnDown.title = m.ativo ? "Baixar mapa" : "Apenas mapas ativos podem ser baixados";
+    if (m.ativo) btnDown.addEventListener("click", () => baixarMapa(m));
+
     const btnToggle = html`<button class="btn-sm">${m.ativo ? "Desativar" : "Ativar"}</button>`;
     btnToggle.addEventListener("click", async () => {
       btnToggle.disabled = true;
@@ -201,31 +394,44 @@ function renderMeus() {
         m.ativo = res.ativo;
         const geral = todosMapas.find(x => x.id_mapa === m.id_mapa);
         if (geral) geral.ativo = res.ativo;
-        atualizarStats();
-        renderMeus();
-        renderTodos();
+        atualizarStats(); renderMeus(); renderTodos();
       } catch(e) {
         alert("Erro: " + e.message);
         btnToggle.disabled = false;
       }
     });
+
+    const tdAcoes = html`<td></td>`;
+    const btnEditar = document.createElement("button");
+    btnEditar.className = "btn-sm";
+    btnEditar.textContent = "Editar";
+    btnEditar.addEventListener("click", () => editarMapa(m, btnEditar));
+
+    const divAcoes = document.createElement("div"); divAcoes.className = "td-acoes";
+    divAcoes.append(btnDown, btnEditar, btnToggle);
+    tdAcoes.append(divAcoes);
+
+    const tdOrigem = document.createElement("td");
+    tdOrigem.innerHTML = origemBadge(m);
+
     const tr = html`<tr></tr>`;
     tr.append(
       celulaPreview(m),
       html`<td>${m.nome_mapa}</td>`,
       html`<td style="color:var(--theme-foreground-muted);font-size:.85rem">${m.data_criacao}</td>`,
       html`<td><span class="badge ${m.ativo ? "badge-ativo" : "badge-inativo"}">${m.ativo ? "Ativo" : "Inativo"}</span></td>`,
-      html`<td>${btnToggle}</td>`,
+      tdOrigem,
+      tdAcoes,
     );
     tbodyMeus.append(tr);
   }
 }
 
 // --- Abas ---
-const tabTodos = html`<button class="tab-btn active">Todos os mapas</button>`;
-const tabMeus  = html`<button class="tab-btn">Meus mapas</button>`;
-const panelTodos = html`<div></div>`;
-const panelMeus  = html`<div style="display:none"></div>`;
+const tabTodos = html`<button class="tab-btn">Todos os mapas</button>`;
+const tabMeus  = html`<button class="tab-btn active">Meus mapas</button>`;
+const panelTodos = html`<div style="display:none"></div>`;
+const panelMeus  = html`<div></div>`;
 
 tabTodos.addEventListener("click", () => {
   tabTodos.classList.add("active"); tabMeus.classList.remove("active");
@@ -237,12 +443,12 @@ tabMeus.addEventListener("click", () => {
 });
 
 panelTodos.append(html`<table class="maps-table">
-  <thead><tr><th>Preview</th><th>Nome</th><th>Professor</th><th>Data</th><th>Status</th><th>Arquivo</th></tr></thead>
+  <thead><tr><th>Preview</th><th>Nome</th><th>Professor</th><th>Data</th><th>Status</th><th>Origem</th><th>Ação</th></tr></thead>
   ${tbodyTodos}
 </table>`);
 
 panelMeus.append(html`<table class="maps-table">
-  <thead><tr><th>Preview</th><th>Nome</th><th>Data</th><th>Status</th><th>Ação</th></tr></thead>
+  <thead><tr><th>Preview</th><th>Nome</th><th>Data</th><th>Status</th><th>Origem</th><th>Ação</th></tr></thead>
   ${tbodyMeus}
 </table>`);
 

@@ -101,6 +101,16 @@ export function toggleAtivoMapa(id_mapa) {
   return apiFetch(`/treinos/mapas/${id_mapa}/ativo`, { method: "PATCH" });
 }
 
+/** GET /api/treinos/mapas/:id/check-uso — verifica se o mapa está em atividades */
+export function checkUsoMapa(id_mapa) {
+  return apiFetch(`/treinos/mapas/${id_mapa}/check-uso`);
+}
+
+/** POST /api/treinos/mapas/:id/copia — cria cópia do próprio mapa para edição segura */
+export function copiarMapaProprio(id_mapa) {
+  return apiFetch(`/treinos/mapas/${id_mapa}/copia`, { method: "POST" });
+}
+
 // --- Professores (restrito ao id_usuario = 1) ---
 
 /** POST /api/auth/register — cadastra novo professor (rota autenticada, admin) */
@@ -151,9 +161,24 @@ export function criarAtividade(dados) {
   return apiFetch("/atividades/", { method: "POST", body: JSON.stringify(dados) });
 }
 
-/** PATCH /api/atividades/:id/ativo — alterna ativo/inativo */
+/** PATCH /api/atividades/:id/ativo — alterna ativo/inativo (só sem logs e não finalizada) */
 export function toggleAtivoAtividade(id) {
   return apiFetch(`/atividades/${id}/ativo`, { method: "PATCH" });
+}
+
+/** PATCH /api/atividades/:id — edita nome/desc/mapas/previsão (só sem alunos) */
+export function editarAtividade(id, dados) {
+  return apiFetch(`/atividades/${id}`, { method: "PATCH", body: JSON.stringify(dados) });
+}
+
+/** POST /api/atividades/:id/finalizar — finaliza atividade com logs */
+export function finalizarAtividade(id) {
+  return apiFetch(`/atividades/${id}/finalizar`, { method: "POST" });
+}
+
+/** POST /api/atividades/:id/copia — copia atividade sem alunos */
+export function copiarAtividade(id) {
+  return apiFetch(`/atividades/${id}/copia`, { method: "POST" });
 }
 
 /** POST /api/treinos/mapas/:id/apropriar — copia mapa de outro professor para si */
