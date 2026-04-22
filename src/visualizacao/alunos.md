@@ -131,11 +131,43 @@ toc: false
     color:var(--theme-foreground); text-decoration:none; cursor:pointer;
   }
   .btn-primary-modal:hover, .btn-ghost-modal:hover { background:var(--theme-background-alt); }
+
+  /* ── Painel de detalhe de sessões no modal ──────── */
+  .modal-detalhe {
+    padding:.75rem 1.4rem .85rem;
+    border-top:1px solid var(--theme-foreground-faintest);
+    max-height:220px; overflow-y:auto;
+  }
+  .modal-detalhe-titulo {
+    font-size:.74rem; font-weight:700; text-transform:uppercase;
+    letter-spacing:.05em; color:var(--theme-foreground-muted);
+    margin-bottom:.55rem;
+  }
+  .md-mapa-header {
+    display:flex; align-items:center; gap:.6rem;
+    padding:.3rem .5rem; border-radius:5px; font-size:.82rem; font-weight:600;
+    background:var(--theme-background-alt); margin-bottom:.2rem;
+  }
+  .md-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+  .md-mapa-nome { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .md-mapa-count { font-size:.74rem; color:var(--theme-foreground-muted); flex-shrink:0; }
+  .md-sessao-row {
+    display:flex; align-items:center; gap:.55rem;
+    padding:.18rem .5rem .18rem 1.5rem; font-size:.78rem;
+    color:var(--theme-foreground-muted);
+    border-bottom:1px solid var(--theme-foreground-faintest);
+  }
+  .md-sessao-row:last-child { border-bottom:none; }
+  .md-sessao-data { flex:1; }
+  .md-badge-ok  { font-size:.7rem; font-weight:700; padding:.1rem .4rem; border-radius:4px; background:var(--om-ok-bg);  color:var(--om-ok-text); }
+  .md-badge-nao { font-size:.7rem; font-weight:700; padding:.1rem .4rem; border-radius:4px; background:var(--om-bad-bg); color:var(--om-bad-text); }
 </style>
 
 ```js
 import { requireAuth, logout } from "../auth.js";
-import { fetchAlunos, fetchSessoes, fetchMetricasAluno, buscarTodosAlunos, apropriarAluno } from "../api.js";
+import { fetchAlunos, fetchSessoes, fetchMetricasAluno, buscarTodosAlunos, apropriarAluno, fetchAtividades, fetchAtividade } from "../api.js";
+
+const COR_MAPA = ["#4a90e2","#5ba85b","#e07b54","#c9a227","#9b59b6","#2eaaa8"];
 
 const currentUser = requireAuth();
 const headerUser   = document.getElementById("header-user");
@@ -267,9 +299,12 @@ function makeRadar(m, color) {
 }
 
 // ── Carregar dados ────────────────────────────────────────────────────────
-let todosAlunos = [];
+let todosAlunos = [], atividades = [];
 try {
-  ({ alunos: todosAlunos } = await fetchAlunos());
+  [{ alunos: todosAlunos }, { atividades }] = await Promise.all([
+    fetchAlunos(),
+    fetchAtividades().catch(() => ({ atividades: [] })),
+  ]);
 } catch(e) {
   display(html`<div style="color:#b91c1c;padding:1rem;background:#fee2e2;border-radius:8px">Erro: ${e.message}</div>`);
 }
@@ -331,7 +366,7 @@ function confirmarApropriar(a) {
   });
 }
 
-// ── Modal de detalhe (radar) ───────────────────────────────────────────────
+// ── Modal de detalhe (radar + sessões) ────────────────────────────────────
 function abrirModal(a) {
   const sessao   = a.ultimaSessao;
   const metricas = a.metricas;
@@ -340,14 +375,11 @@ function abrirModal(a) {
 
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
-
-  // Fechar ao clicar fora
   overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
   document.addEventListener("keydown", function esc(e) {
     if (e.key === "Escape") { overlay.remove(); document.removeEventListener("keydown", esc); }
   });
 
-  // Médias para exibição no rodapé do modal
   const media = metricas
     ? Math.round((metricas.precisao + metricas.objetivos + metricas.fluidez) / 3)
     : null;
@@ -364,7 +396,7 @@ function abrirModal(a) {
         color:var(--theme-foreground-muted);font-size:.9rem;font-style:italic">Sem dados de análise</div>`;
 
   overlay.innerHTML = `
-    <div class="modal-box" style="--modal-accent:${cor.stroke}">
+    <div class="modal-box" style="--modal-accent:${cor.stroke};max-width:540px">
       <div class="modal-header" style="border-bottom-color:${cor.stroke}">
         <div class="modal-avatar" style="background:${avatarColor(a.id_aluno)}">${initials(a.nome_completo)}</div>
         <div>
@@ -379,11 +411,16 @@ function abrirModal(a) {
       <div class="modal-radar">${radarGrande}</div>
 
       <div class="modal-badges">
-        <span class="modal-badge-label">Última sessão:</span>
-        <span style="font-size:.82rem">Mapa: <strong>${sessao?.nome_mapa ?? "—"}</strong></span>
         <span style="font-size:.82rem">Sessões jogadas: <strong>${a.totalSessoes}</strong></span>
         ${badgeFin}
         ${media !== null ? `<span style="margin-left:auto;font-size:.82rem;color:${cor.stroke};font-weight:700">Média: ${media}%</span>` : ""}
+      </div>
+
+      <div class="modal-detalhe" id="modal-detalhe-sessoes">
+        <div class="modal-detalhe-titulo">Detalhes da atividade</div>
+        <div id="md-corpo" style="font-size:.82rem;color:var(--theme-foreground-muted);font-style:italic">
+          Carregando sessões…
+        </div>
       </div>
 
       <div class="modal-footer">
@@ -395,11 +432,65 @@ function abrirModal(a) {
   overlay.querySelector(".modal-close").addEventListener("click", () => overlay.remove());
   overlay.querySelector("#modal-fechar").addEventListener("click", () => overlay.remove());
   document.body.append(overlay);
+
+  // ── Buscar sessões e popular painel ────────────────────────────────────────
+  const corpo = overlay.querySelector("#md-corpo");
+  fetchSessoes(a.id_aluno)
+    .then(({ sessoes }) => {
+      corpo.innerHTML = "";
+      if (!sessoes?.length) {
+        corpo.textContent = "Nenhuma sessão registrada.";
+        corpo.style.fontStyle = "italic";
+        return;
+      }
+
+      // Agrupar por nome_mapa
+      const grupos = new Map();
+      for (const s of sessoes) {
+        const key = s.nome_mapa ?? "—";
+        if (!grupos.has(key)) grupos.set(key, []);
+        grupos.get(key).push(s);
+      }
+
+      let idx = 0;
+      for (const [nomeMapa, lista] of grupos) {
+        const cor = COR_MAPA[idx % COR_MAPA.length];
+
+        const header = document.createElement("div");
+        header.className = "md-mapa-header";
+        header.innerHTML = `
+          <div class="md-dot" style="background:${cor}"></div>
+          <span class="md-mapa-nome">${nomeMapa}</span>
+          <span class="md-mapa-count">${lista.length} ${lista.length !== 1 ? "sessões" : "sessão"}</span>`;
+
+        const subList = document.createElement("div");
+        for (const s of lista) {
+          const row = document.createElement("div");
+          row.className = "md-sessao-row";
+          const finalBadge = s.cleared_map
+            ? `<span class="md-badge-ok">Finalizada</span>`
+            : `<span class="md-badge-nao">Não finalizada</span>`;
+          row.innerHTML = `
+            <span class="md-sessao-data">${s.data?.slice(0, 16) ?? "—"}</span>
+            <span style="font-size:.72rem;color:var(--theme-foreground-faint)">#${s.id_log}</span>
+            ${finalBadge}`;
+          subList.append(row);
+        }
+
+        corpo.append(header, subList);
+        idx++;
+      }
+    })
+    .catch(() => {
+      corpo.textContent = "Erro ao carregar sessões.";
+      corpo.style.color = "#b91c1c";
+    });
 }
 
 // ── Estado UI ─────────────────────────────────────────────────────────────
 let filtro = "ativo";
 let busca  = "";
+let filtroAtividadeIds = null; // null = sem filtro, Set<id_aluno> = apenas alunos da atividade
 let searchResultados = null; // null = usa alunosMeta local
 let searchSeq = 0;
 let searchDebounce = null;
@@ -558,9 +649,10 @@ function renderGrid() {
     }
     lista = searchResultados;
   } else {
-    lista = alunosMeta.filter(a =>
-      filtro === "todos" ? true : filtro === "ativo" ? a.ativo : !a.ativo
-    );
+    lista = alunosMeta.filter(a => {
+      if (filtroAtividadeIds !== null && !filtroAtividadeIds.has(a.id_aluno)) return false;
+      return filtro === "todos" ? true : filtro === "ativo" ? a.ativo : !a.ativo;
+    });
   }
 
   if (!lista.length) {
@@ -607,13 +699,50 @@ searchInput.addEventListener("input", () => {
 
 renderGrid();
 
+// ── Select de atividade ───────────────────────────────────────────────────
+const selectAtividade = document.createElement("select");
+selectAtividade.className = "search-input";
+selectAtividade.style.minWidth = "200px";
+const optTodas = document.createElement("option");
+optTodas.value = ""; optTodas.textContent = "Todas as atividades";
+selectAtividade.append(optTodas);
+for (const at of atividades) {
+  const opt = document.createElement("option");
+  opt.value = at.id_atividade;
+  opt.textContent = at.nome + (at.finalizada ? " (Finalizada)" : "");
+  selectAtividade.append(opt);
+}
+
+selectAtividade.addEventListener("change", async () => {
+  const id = selectAtividade.value;
+  if (!id) {
+    filtroAtividadeIds = null;
+    renderGrid();
+    return;
+  }
+  // Mostrar todos os status ao filtrar por atividade
+  setFiltro("todos");
+  const loading = document.createElement("p");
+  loading.className = "empty-state"; loading.textContent = "Carregando…";
+  grid.replaceChildren(loading);
+  try {
+    const { alunos: alunosAtiv } = await fetchAtividade(parseInt(id));
+    filtroAtividadeIds = new Set(alunosAtiv.map(a => a.id_aluno));
+    renderGrid();
+  } catch {
+    filtroAtividadeIds = null;
+    renderGrid();
+  }
+});
+
 // ── Render final ──────────────────────────────────────────────────────────
 const statsBar = document.createElement("div"); statsBar.className = "stats-bar";
 statsBar.append(statTotal, statAtivos, statComDados);
 
 const filters = document.createElement("div"); filters.className = "filters";
 const lbl = document.createElement("span"); lbl.className = "filter-label"; lbl.textContent = "Mostrar:";
-filters.append(lbl, btnAtivos, btnTodos, btnInativos, searchInput);
+const lblAtiv = document.createElement("span"); lblAtiv.className = "filter-label"; lblAtiv.textContent = "Atividade:";
+filters.append(lbl, btnAtivos, btnTodos, btnInativos, searchInput, lblAtiv, selectAtividade);
 
 display(html`<div>
   <div class="page-header"><h1>Alunos</h1></div>

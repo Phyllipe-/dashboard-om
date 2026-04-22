@@ -4,6 +4,9 @@ toc: false
 ---
 
 <style>
+  /* Expande o conteúdo para ocupar mais colunas do grid do Observable */
+  #observablehq-main, .observablehq--block { max-width:none !important; }
+
   .page-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:1.5rem; flex-wrap:wrap; gap:.75rem; }
   .page-header h1 { margin:0; font-size:1.5rem; }
   .stats-bar { display:flex; gap:1.25rem; margin-bottom:1.5rem; flex-wrap:wrap; }
@@ -13,14 +16,22 @@ toc: false
 
   /* Tabela */
   .table { width:100%; border-collapse:collapse; font-size:.9rem; }
+  .table th:nth-child(2), .table td:nth-child(2) { white-space:nowrap; width:1%; }
+  .table th:nth-child(3), .table td:nth-child(3) { white-space:nowrap; width:1%; }
+  .table th:nth-child(4), .table td:nth-child(4) { white-space:nowrap; width:1%; }
+  .table th:nth-child(5), .table td:nth-child(5) { white-space:nowrap; width:1%; }
+  .table th:nth-child(6), .table td:nth-child(6) { white-space:nowrap; width:1%; }
+  .table th:nth-child(7), .table td:nth-child(7) { white-space:nowrap; width:1%; }
+  .btn-sm { white-space:nowrap; }
   .table th { text-align:left; padding:.55rem .75rem; border-bottom:2px solid var(--theme-foreground-faint); color:var(--theme-foreground-muted); font-size:.78rem; text-transform:uppercase; letter-spacing:.04em; }
   .table td { padding:.6rem .75rem; border-bottom:1px solid var(--theme-foreground-faintest); vertical-align:middle; }
   .table tr.clickable:hover td { background:var(--theme-background-alt); cursor:pointer; }
   .table tr.detail-row td { padding:0; border-bottom:2px solid var(--theme-foreground-faint); }
 
   .badge { display:inline-block; padding:.18rem .55rem; border-radius:12px; font-size:.78rem; font-weight:600; }
-  .badge-ativo   { background:var(--om-ok-bg); color:var(--om-ok-text); }
-  .badge-inativo { background:var(--om-bad-bg); color:var(--om-bad-text); }
+  .badge-ativo      { background:var(--om-ok-bg);  color:var(--om-ok-text); }
+  .badge-inativo    { background:var(--om-bad-bg); color:var(--om-bad-text); }
+  .badge-finalizada { background:#fef3c7; color:#92400e; }
 
   .btn { padding:.6rem 1.25rem; border-radius:6px; font-size:.95rem; font-weight:600; cursor:pointer; border:1.5px solid transparent; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; box-sizing:border-box; transition:opacity .15s; }
   .btn-primary { background:var(--theme-foreground); border-color:var(--theme-foreground); }
@@ -68,7 +79,7 @@ toc: false
 
 ```js
 import { requireAuth, logout } from "../auth.js";
-import { fetchAtividades, fetchAtividade, toggleAtivoAtividade } from "../api.js";
+import { fetchAtividades, fetchAtividade, toggleAtivoAtividade, finalizarAtividade, copiarAtividade } from "../api.js";
 
 const API_BASE = "http://127.0.0.1:5000/api";
 
@@ -77,6 +88,51 @@ const headerUser   = document.getElementById("header-user");
 const headerLogout = document.getElementById("header-logout");
 if (headerUser)   headerUser.textContent = currentUser.nome;
 if (headerLogout) headerLogout.addEventListener("click", logout);
+
+// ── Modal genérico de confirmação ────────────────────────────────────────────
+function modalConfirmar(titulo, corpo, labelOk = "Confirmar", labelCancel = "Cancelar") {
+  return new Promise(resolve => {
+    const overlay = document.createElement("div");
+    overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:9999;backdrop-filter:blur(3px)";
+
+    const box = document.createElement("div");
+    box.style.cssText = "background:var(--theme-background);border-radius:12px;padding:1.5rem;max-width:400px;width:90%;display:flex;flex-direction:column;gap:.85rem";
+
+    const h = document.createElement("p");
+    h.style.cssText = "font-weight:700;font-size:1rem;margin:0";
+    h.textContent = titulo;
+
+    const p = document.createElement("p");
+    p.style.cssText = "font-size:.9rem;line-height:1.6;color:var(--theme-foreground-muted);margin:0";
+    p.innerHTML = corpo;
+
+    const footer = document.createElement("div");
+    footer.style.cssText = "display:flex;gap:.6rem;justify-content:flex-end";
+
+    const fechar = (val) => { overlay.remove(); resolve(val); };
+    overlay.addEventListener("click", e => { if (e.target === overlay) fechar(false); });
+    document.addEventListener("keydown", function esc(e) {
+      if (e.key === "Escape") { fechar(false); document.removeEventListener("keydown", esc); }
+    });
+
+    const btnCancel = document.createElement("button");
+    btnCancel.className = "btn btn-ghost";
+    btnCancel.style.cssText = "padding:.45rem 1rem;font-size:.875rem";
+    btnCancel.textContent = labelCancel;
+    btnCancel.addEventListener("click", () => fechar(false));
+
+    const btnOk = document.createElement("button");
+    btnOk.className = "btn btn-primary";
+    btnOk.style.cssText = "padding:.45rem 1rem;font-size:.875rem";
+    btnOk.textContent = labelOk;
+    btnOk.addEventListener("click", () => fechar(true));
+
+    footer.append(btnCancel, btnOk);
+    box.append(h, p, footer);
+    overlay.append(box);
+    document.body.append(overlay);
+  });
+}
 
 let atividades = [];
 try {
@@ -239,7 +295,7 @@ function renderTabela() {
   if (!atividades.length) {
     const tr = document.createElement("tr");
     const td = document.createElement("td");
-    td.colSpan = 6;
+    td.colSpan = 7;
     td.className = "empty-state";
     td.textContent = "Nenhuma atividade criada ainda.";
     tr.append(td); tbody.append(tr);
@@ -258,7 +314,7 @@ function renderTabela() {
     detailTr.dataset.detailFor = a.id_atividade;
     detailTr.style.display = "none";
     const detailTd = document.createElement("td");
-    detailTd.colSpan = 6;
+    detailTd.colSpan = 7;
     detailTr.append(detailTd);
 
     // Chevron
@@ -287,29 +343,106 @@ function renderTabela() {
     tdData.textContent = a.data_criacao;
     tr.append(tdData);
 
+    const tdFim = document.createElement("td");
+    tdFim.style.cssText = "font-size:.82rem;color:var(--theme-foreground-muted)";
+    tdFim.textContent = a.data_finalizacao ?? "—";
+    tr.append(tdFim);
+
     const tdBadge = document.createElement("td");
     const badge = document.createElement("span");
-    badge.className = "badge " + (a.ativo ? "badge-ativo" : "badge-inativo");
-    badge.textContent = a.ativo ? "Ativa" : "Inativa";
+    if (a.finalizada) {
+      badge.className = "badge badge-finalizada";
+      badge.textContent = "Finalizada";
+    } else if (a.ativo) {
+      badge.className = "badge badge-ativo";
+      badge.textContent = "Ativa";
+    } else {
+      badge.className = "badge badge-inativo";
+      badge.textContent = "Inativa";
+    }
     tdBadge.append(badge);
     tr.append(tdBadge);
 
     const tdAcao = document.createElement("td");
-    const btnToggle = document.createElement("button");
-    btnToggle.className   = "btn-sm";
-    btnToggle.textContent = a.ativo ? "Desativar" : "Ativar";
-    btnToggle.addEventListener("click", async (e) => {
-      e.stopPropagation(); // não abre o detalhe ao clicar no botão
-      btnToggle.disabled = true;
-      try {
-        const res = await toggleAtivoAtividade(a.id_atividade);
-        a.ativo = res.ativo;
-        delete cacheDetalhes[a.id_atividade]; // invalida cache
-        atualizarStats();
-        renderTabela();
-      } catch(err) { alert("Erro: " + err.message); btnToggle.disabled = false; }
-    });
-    tdAcao.append(btnToggle);
+
+    // Cenário 3 — finalizada: só pode copiar
+    if (a.finalizada) {
+      const btnCopiar = document.createElement("button");
+      btnCopiar.className   = "btn-sm";
+      btnCopiar.textContent = "Copiar";
+      btnCopiar.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const ok = await modalConfirmar(
+          "Copiar atividade",
+          `Criar uma cópia de <strong>${a.nome}</strong>?<br><br>
+           Os mapas serão mantidos, mas os alunos precisarão ser adicionados novamente.`,
+          "Copiar", "Cancelar"
+        );
+        if (!ok) return;
+        btnCopiar.disabled = true; btnCopiar.textContent = "Copiando…";
+        try {
+          const res = await copiarAtividade(a.id_atividade);
+          const { atividades: lista } = await fetchAtividades();
+          atividades = lista;
+          atualizarStats(); renderTabela();
+        } catch(err) { alert("Erro: " + err.message); btnCopiar.disabled = false; btnCopiar.textContent = "Copiar"; }
+      });
+      tdAcao.append(btnCopiar);
+
+    // Cenário 2 — ativa com logs: só pode finalizar
+    } else if (a.ativo && a.tem_logs) {
+      const btnFinalizar = document.createElement("button");
+      btnFinalizar.className   = "btn-sm";
+      btnFinalizar.textContent = "Finalizar";
+      btnFinalizar.style.borderColor = "#f59e0b";
+      btnFinalizar.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const ok = await modalConfirmar(
+          "Finalizar atividade",
+          `A atividade <strong>${a.nome}</strong> possui dados de alunos registrados.<br><br>
+           Ao finalizar, ela será encerrada permanentemente e não poderá ser reativada.`,
+          "Finalizar", "Cancelar"
+        );
+        if (!ok) return;
+        btnFinalizar.disabled = true; btnFinalizar.textContent = "Finalizando…";
+        try {
+          const res = await finalizarAtividade(a.id_atividade);
+          a.ativo = false; a.finalizada = true; a.data_finalizacao = res.data_finalizacao;
+          delete cacheDetalhes[a.id_atividade];
+          atualizarStats(); renderTabela();
+        } catch(err) { alert("Erro: " + err.message); btnFinalizar.disabled = false; btnFinalizar.textContent = "Finalizar"; }
+      });
+      tdAcao.append(btnFinalizar);
+
+    // Cenário 1a — ativa, sem logs, sem alunos: editar
+    } else if (a.ativo && !a.tem_logs && a.total_alunos === 0) {
+      const btnEditar = document.createElement("button");
+      btnEditar.className   = "btn-sm";
+      btnEditar.textContent = "Editar";
+      btnEditar.addEventListener("click", (e) => {
+        e.stopPropagation();
+        window.location.href = `/admin/editar-atividade?id=${a.id_atividade}`;
+      });
+      tdAcao.append(btnEditar);
+
+    // Cenário 1b — ativa sem logs com alunos, ou inativa: toggle livre
+    } else {
+      const btnToggle = document.createElement("button");
+      btnToggle.className   = "btn-sm";
+      btnToggle.textContent = a.ativo ? "Desativar" : "Ativar";
+      btnToggle.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        btnToggle.disabled = true;
+        try {
+          const res = await toggleAtivoAtividade(a.id_atividade);
+          a.ativo = res.ativo;
+          delete cacheDetalhes[a.id_atividade];
+          atualizarStats(); renderTabela();
+        } catch(err) { alert("Erro: " + err.message); btnToggle.disabled = false; }
+      });
+      tdAcao.append(btnToggle);
+    }
+
     tr.append(tdAcao);
 
     // Clicar na linha abre/fecha detalhe
@@ -329,7 +462,7 @@ statsBar.append(statTotal, statAtivas);
 const table = document.createElement("table");
 table.className = "table";
 const thead = document.createElement("thead");
-thead.innerHTML = "<tr><th>Nome</th><th>Mapas</th><th>Alunos</th><th>Criada em</th><th>Status</th><th>Ação</th></tr>";
+thead.innerHTML = "<tr><th>Nome</th><th>Mapas</th><th>Alunos</th><th>Criada em</th><th>Finalizada em</th><th>Status</th><th>Ação</th></tr>";
 table.append(thead, tbody);
 
 display(html`<div>

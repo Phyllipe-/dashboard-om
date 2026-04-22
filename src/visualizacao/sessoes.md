@@ -16,6 +16,11 @@ toc: false
 
   .sessoes-table { width:100%; border-collapse:collapse; font-size:.9rem; }
   .sessoes-table th { text-align:left; padding:.6rem .75rem; border-bottom:2px solid var(--theme-foreground-faint); color:var(--theme-foreground-muted); font-weight:600; font-size:.78rem; text-transform:uppercase; letter-spacing:.04em; }
+  .sessoes-table th.sortable { cursor:pointer; user-select:none; white-space:nowrap; }
+  .sessoes-table th.sortable:hover { color:var(--theme-foreground); }
+  .sessoes-table th.sort-ativo { color:var(--theme-foreground); }
+  .sort-icon { margin-left:.3em; opacity:.4; font-style:normal; }
+  .sort-ativo .sort-icon { opacity:1; }
   .sessoes-table td { padding:.65rem .75rem; border-bottom:1px solid var(--theme-foreground-faintest); vertical-align:middle; }
   .sessoes-table tr:hover td { background:var(--theme-background-alt); }
 
@@ -74,15 +79,38 @@ statConc.innerHTML = `<div class="stat-value" style="color:#166534">${concluidas
 const statMapas = document.createElement("div"); statMapas.className = "stat-card";
 statMapas.innerHTML = `<div class="stat-value" style="color:#1d4ed8">${mapas}</div><div class="stat-label">Mapas diferentes</div>`;
 
-// ── Tabela ────────────────────────────────────────────────────────────────
+// ── Tabela com ordenação ──────────────────────────────────────────────────
+let sortCol = "data", sortDir = -1; // padrão: data desc
+
+const COLUNAS = [
+  { key: "id_log",       label: "#",         val: s => s.id_log },
+  { key: "nome_mapa",    label: "Mapa",      val: s => s.nome_mapa ?? "" },
+  { key: "data",         label: "Data",      val: s => s.data ?? "" },
+  { key: "tempo_sessao", label: "Tempo",     val: s => s.tempo_sessao ?? 0 },
+  { key: "cleared_map",  label: "Resultado", val: s => s.cleared_map ? 1 : 0 },
+];
+
 const tbody = document.createElement("tbody");
 
-if (!sessoes.length) {
-  const tr = document.createElement("tr");
-  tr.innerHTML = `<td colspan="6" class="empty-state">Nenhuma sessão registrada.</td>`;
-  tbody.append(tr);
-} else {
-  for (const s of sessoes) {
+function renderTabela() {
+  tbody.innerHTML = "";
+
+  if (!sessoes.length) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td colspan="6" class="empty-state">Nenhuma sessão registrada.</td>`;
+    tbody.append(tr);
+    return;
+  }
+
+  const col = COLUNAS.find(c => c.key === sortCol);
+  const sorted = [...sessoes].sort((a, b) => {
+    const va = col.val(a), vb = col.val(b);
+    if (va < vb) return -sortDir;
+    if (va > vb) return  sortDir;
+    return 0;
+  });
+
+  for (const s of sorted) {
     const badgeEl = document.createElement("span");
     badgeEl.className = `badge ${s.cleared_map ? "badge-ok" : "badge-no"}`;
     badgeEl.textContent = s.cleared_map ? "Concluído" : "Não concluído";
@@ -103,7 +131,36 @@ if (!sessoes.length) {
     tr.append(tdId, tdMapa, tdData, tdTempo, tdRes, tdAcao);
     tbody.append(tr);
   }
+
+  // Atualiza indicadores nos headers
+  for (const th of thead.querySelectorAll("th.sortable")) {
+    const k = th.dataset.col;
+    const icon = th.querySelector(".sort-icon");
+    th.classList.toggle("sort-ativo", k === sortCol);
+    if (icon) icon.textContent = k === sortCol ? (sortDir === 1 ? "▲" : "▼") : "⬍";
+  }
 }
+
+// ── Cabeçalho clicável ────────────────────────────────────────────────────
+const thead = document.createElement("thead");
+const trHead = document.createElement("tr");
+
+for (const col of COLUNAS) {
+  const th = document.createElement("th");
+  th.className = "sortable";
+  th.dataset.col = col.key;
+  th.innerHTML = `${col.label} <i class="sort-icon">⬍</i>`;
+  th.addEventListener("click", () => {
+    if (sortCol === col.key) sortDir *= -1;
+    else { sortCol = col.key; sortDir = 1; }
+    renderTabela();
+  });
+  trHead.append(th);
+}
+trHead.append(document.createElement("th")); // coluna ação sem sort
+thead.append(trHead);
+
+renderTabela();
 
 // ── Render ────────────────────────────────────────────────────────────────
 const nomeAluno = aluno?.nome_completo ?? `Aluno #${id_aluno}`;
@@ -114,16 +171,7 @@ display(html`<div>
   </div>
   <div class="stats-bar">${statTotal}${statConc}${statMapas}</div>
   <table class="sessoes-table">
-    <thead>
-      <tr>
-        <th>#</th>
-        <th>Mapa</th>
-        <th>Data</th>
-        <th>Tempo</th>
-        <th>Resultado</th>
-        <th></th>
-      </tr>
-    </thead>
+    ${thead}
     ${tbody}
   </table>
   <div style="margin-top:1.5rem">
