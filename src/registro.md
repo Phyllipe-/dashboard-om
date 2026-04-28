@@ -1,9 +1,13 @@
 ---
 title: Criar Conta
+sidebar: false
 toc: false
 ---
 
 <style>
+  /* Oculta header/nav global nesta página */
+  #app-header, #app-nav,
+  .observablehq-header, header { display: none !important; }
   /* ── Layout ─────────────────────────────────────────────────────────── */
   .form-page { max-width:580px; }
   .form-page h1 { font-size:1.5rem; margin-bottom:.25rem; }

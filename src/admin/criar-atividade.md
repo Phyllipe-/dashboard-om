@@ -65,6 +65,14 @@ toc: false
   .hint { font-size:.78rem; color:var(--theme-foreground-muted); }
   .empty-hint { font-size:.85rem; color:var(--theme-foreground-muted); padding:.5rem .75rem; font-style:italic; }
   .col-label { font-size:.8rem; font-weight:600; margin-bottom:.4rem; color:var(--theme-foreground-muted); letter-spacing:.03em; }
+
+  /* Tipo de sequência */
+  .seq-tipo { display:flex; align-items:center; gap:.6rem; margin-bottom:1rem; padding:.65rem .85rem; border:1px solid var(--theme-foreground-faintest); border-radius:8px; background:var(--theme-background-alt); cursor:pointer; user-select:none; }
+  .seq-tipo input[type=checkbox] { width:1.1rem; height:1.1rem; accent-color:var(--om-accent); cursor:pointer; flex-shrink:0; }
+  .seq-tipo-label { font-size:.9rem; font-weight:600; }
+  .seq-tipo-hint  { font-size:.78rem; color:var(--theme-foreground-muted); }
+  .seq-tipo.livre { border-color:var(--om-accent); background:#eff6ff; }
+  .seq-num-hidden { color:var(--theme-foreground-faintest) !important; }
 </style>
 
 ```js
@@ -111,6 +119,38 @@ fPrevisao.min = new Date().toISOString().slice(0, 10);
 // ══════════════════════════════════════════════════════════════════════════════
 let sequencia    = [];   // [{id_mapa, nome_mapa}]
 let abaAtiva     = "meus"; // "meus" | "outros"
+let sequenciaLivre = false;
+
+// Checkbox tipo de sequência
+const chkSeqLivre = document.createElement("input");
+chkSeqLivre.type = "checkbox";
+chkSeqLivre.id   = "chk-seq-livre";
+
+const seqTipoBox = document.createElement("label");
+seqTipoBox.className = "seq-tipo";
+seqTipoBox.htmlFor   = "chk-seq-livre";
+
+const seqTipoTexto = document.createElement("div");
+seqTipoTexto.style.display = "flex";
+seqTipoTexto.style.flexDirection = "column";
+seqTipoTexto.style.gap = ".15rem";
+
+const seqTipoLabel = document.createElement("span");
+seqTipoLabel.className = "seq-tipo-label";
+seqTipoLabel.textContent = "Sequência livre";
+
+const seqTipoHint = document.createElement("span");
+seqTipoHint.className = "seq-tipo-hint";
+seqTipoHint.textContent = "O aluno pode realizar os mapas em qualquer ordem. Quando desmarcado, a ordem definida abaixo é obrigatória.";
+
+seqTipoTexto.append(seqTipoLabel, seqTipoHint);
+seqTipoBox.append(chkSeqLivre, seqTipoTexto);
+
+chkSeqLivre.addEventListener("change", () => {
+  sequenciaLivre = chkSeqLivre.checked;
+  seqTipoBox.classList.toggle("livre", sequenciaLivre);
+  renderSeq();
+});
 
 // Contêineres DOM — NÃO usar html`` para nós que sofrem replaceChildren()
 const poolContainer = document.createElement("div");
@@ -260,8 +300,8 @@ function renderSeq() {
     item.className = "seq-item";
 
     const num = document.createElement("span");
-    num.className = "seq-order";
-    num.textContent = i + 1;
+    num.className = "seq-order" + (sequenciaLivre ? " seq-num-hidden" : "");
+    num.textContent = sequenciaLivre ? "—" : i + 1;
 
     const nome = document.createElement("span");
     nome.className = "seq-name";
@@ -375,6 +415,7 @@ btnSalvar.addEventListener("click", async () => {
       nome,
       descricao: fDescricao.value.trim(),
       data_previsao_finalizacao: fPrevisao.value || null,
+      sequencia_livre: sequenciaLivre,
       mapas:  sequencia.map((s, i) => ({ id_mapa: s.id_mapa, ordem: i + 1 })),
       alunos: [...alunosSelecionados],
     });
@@ -382,6 +423,8 @@ btnSalvar.addEventListener("click", async () => {
     alertDiv.textContent = `Atividade "${nome}" criada com sucesso!`;
     fNome.value = ""; fDescricao.value = "";
     sequencia = []; alunosSelecionados.clear();
+    sequenciaLivre = false; chkSeqLivre.checked = false;
+    seqTipoBox.classList.remove("livre");
     renderSeq(); renderPool(); renderAlunos();
   } catch (e) {
     alertDiv.className   = "alert alert-error";
@@ -422,6 +465,7 @@ display(html`<div>
 
   <div class="section">
     <p class="section-title"><span class="section-num">2</span> Sequência de mapas</p>
+    ${seqTipoBox}
     <p class="hint" style="margin-bottom:.75rem">
       Clique em "+ Adicionar" para incluir um mapa à sequência. Use ↑ ↓ para reordenar.
       Na aba <strong>Outros professores</strong> você pode apropriar mapas para sua biblioteca.
