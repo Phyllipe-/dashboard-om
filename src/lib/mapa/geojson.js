@@ -102,7 +102,7 @@ export function mapaParaGeoJSON({ cols, rows, layers }) {
         const x = i % cols, y = Math.floor(i / cols);
         features.push({
           type: "Feature",
-          geometry: { type: "Polygon", coordinates: tilePolygon(x, y) },
+          geometry: { type: "LineString", coordinates: tilePolygon(x, y)[0] },
           properties: {
             layerName,
             nomeAmigavel: nomeAmigavel(layerName, data[i], `Piso (${data[i]})`),
