@@ -86,15 +86,18 @@ export function graficoTrajetoria(sessoesComLog, camadas, Plot) {
   // Helpers de camada base
   const getCamada  = name => camadas?.find(c => c.layerName === name);
   const polyToRect = f => {
-    const c = f.geometry.coordinates[0];
+    const c = f.geometry.type === "Polygon" ? f.geometry.coordinates[0] : f.geometry.coordinates;
     return { x1: c[0][0], y1: c[2][1], x2: c[2][0], y2: c[0][1], ...f.properties };
   };
 
   const floorRects  = (getCamada("floor")?.geojson.features ?? []).map(polyToRect);
   const doorRects   = (getCamada("door_and_windows")?.geojson.features ?? []).map(polyToRect);
-  const wallFeature = getCamada("walls")?.geojson.features[0];
-  const wallEdges   = (wallFeature?.geometry.coordinates ?? []).map(([p1, p2]) => ({
+  const wallFeature   = getCamada("walls")?.geojson.features[0];
+  const wallEdges     = (wallFeature?.geometry.coordinates ?? []).map(([p1, p2]) => ({
     x1: p1[0], y1: p1[1], x2: p2[0], y2: p2[1],
+  }));
+  const personPoints  = (getCamada("persons")?.geojson.features ?? []).map(f => ({
+    x: f.geometry.coordinates[0], y: f.geometry.coordinates[1], label: "Início",
   }));
 
   // ── Conjunto de tiles navegáveis ─────────────────────────────────────────────
@@ -147,7 +150,7 @@ export function graficoTrajetoria(sessoesComLog, camadas, Plot) {
     marks: [
       ...(floorRects.length ? [Plot.rect(floorRects, {
         x1: "x1", y1: "y1", x2: "x2", y2: "y2",
-        fill: "#f0f0f0", stroke: d => d.areaInterna ? "#cccccc" : "none", strokeWidth: 0.5,
+        fill: "none", stroke: d => d.areaInterna ? "#cccccc" : "#e0e0e0", strokeWidth: 0.5,
       })] : []),
       ...(doorRects.length ? [Plot.rect(doorRects, {
         x1: "x1", y1: "y1", x2: "x2", y2: "y2",
@@ -163,6 +166,9 @@ export function graficoTrajetoria(sessoesComLog, camadas, Plot) {
         x1: "x1", y1: "y1", x2: "x2", y2: "y2",
         stroke: "#3a3a3a", strokeWidth: Math.max(1, scale * 0.07),
       })] : []),
+      ...(personPoints.length ? [
+        Plot.dot(personPoints, { x: "x", y: "y", r: 5, fill: "#222", stroke: "#fff", strokeWidth: 1.5 }),
+      ] : []),
     ],
   });
 
@@ -173,7 +179,18 @@ export function graficoTrajetoria(sessoesComLog, camadas, Plot) {
   nota.style.cssText = "font-size:.58rem;color:var(--theme-foreground-muted);text-align:center;";
   nota.textContent = `${sessoesComLog.length} sessão(ões) · ${posicoes.length} posições registadas`;
 
-  wrap.append(chart, nota);
+  if (personPoints.length) {
+    const legInic = document.createElement("div");
+    legInic.style.cssText = "display:flex;align-items:center;justify-content:center;gap:5px;font-size:.6rem;color:var(--theme-foreground-muted);";
+    const dotEl = document.createElement("div");
+    dotEl.style.cssText = "width:8px;height:8px;border-radius:50%;background:#222;border:1.5px solid #fff;box-shadow:0 0 0 1px #222;flex-shrink:0;";
+    const lblEl = document.createElement("span");
+    lblEl.textContent = "Ponto Inicial";
+    legInic.append(dotEl, lblEl);
+    wrap.append(chart, legInic, nota);
+  } else {
+    wrap.append(chart, nota);
+  }
   return wrap;
 }
 

@@ -287,11 +287,12 @@ const chkObjetos  = html`<input type="checkbox" checked>`;  // interactive_eleme
 const chkMoveis   = html`<input type="checkbox" checked>`;  // furniture/eletronics/utensils
 
 // Re-renderiza os mapas quando qualquer checkbox de camada mudar
-[chkObjetos, chkMoveis].forEach(c => c.addEventListener("change", () => {
+[chkObjetos, chkMoveis, chkInicio].forEach(c => c.addEventListener("change", () => {
   const sy = window.scrollY;
   if (giroState.camadas) renderizarMapaGiros();
   if (giroState.camadas) renderizarHeatmap();
   if (giroState.camadas) renderizarColisao();
+  if (giroState.camadas) renderizarReplay();
   requestAnimationFrame(() => window.scrollTo({ top: sy, behavior: "instant" }));
 }));
 
@@ -419,6 +420,7 @@ function aplicarFiltroSessoes() {
     renderizarMapaGiros();
     renderizarHeatmap();
     renderizarColisao();
+    renderizarReplay();
     renderizarLateralidade();
     renderizarComportamental();
   }
@@ -493,7 +495,7 @@ function _renderizarMapaGiros() {
   // ── Extrair camadas do GeoJSON ──────────────────────────────────────────
   const getCamada = name => camadas.find(c => c.layerName === name);
   const polyToRect = f => {
-    const c = f.geometry.coordinates[0];
+    const c = f.geometry.type === "Polygon" ? f.geometry.coordinates[0] : f.geometry.coordinates;
     return { x1: c[0][0], y1: c[2][1], x2: c[2][0], y2: c[0][1], ...f.properties };
   };
 
@@ -507,9 +509,12 @@ function _renderizarMapaGiros() {
     ...(getCamada("eletronics")?.geojson.features ?? []),
     ...(getCamada("utensils")?.geojson.features   ?? []),
   ].map(polyToRect) : [];
-  const wallFeature = getCamada("walls")?.geojson.features[0];
-  const wallEdges = (wallFeature?.geometry.coordinates ?? []).map(([p1, p2]) => ({
+  const wallFeature   = getCamada("walls")?.geojson.features[0];
+  const wallEdges     = (wallFeature?.geometry.coordinates ?? []).map(([p1, p2]) => ({
     x1: p1[0], y1: p1[1], x2: p2[0], y2: p2[1],
+  }));
+  const personPoints  = (getCamada("persons")?.geojson.features ?? []).map(f => ({
+    x: f.geometry.coordinates[0], y: f.geometry.coordinates[1], label: "Início",
   }));
 
   // interactive_elements: polígonos com centro e índice numerado
@@ -545,7 +550,8 @@ function _renderizarMapaGiros() {
   }));
 
   // ── Dimensões ──────────────────────────────────────────────────────────
-  const W = (mapaGirosContainer.clientWidth || 460) - 110; // 110 = legenda
+  const LEGENDA_W = 140;
+  const W = (mapaGirosContainer.getBoundingClientRect().width || 500) - LEGENDA_W - 16;
   const scale = Math.min((W - 8) / cols, 480 / rows);
   const W2 = Math.round(cols * scale);
   const H2 = Math.round(rows * scale);
@@ -567,8 +573,8 @@ function _renderizarMapaGiros() {
     marks: [
       Plot.rect(floorRects, {
         x1: "x1", y1: "y1", x2: "x2", y2: "y2",
-        fill: "#f0f0f0",
-        stroke: d => d.areaInterna ? "#cccccc" : "none", strokeWidth: 0.5,
+        fill: "none",
+        stroke: d => d.areaInterna ? "#cccccc" : "#e0e0e0", strokeWidth: 0.5,
       }),
       Plot.rect(doorRects, {
         x1: "x1", y1: "y1", x2: "x2", y2: "y2",
@@ -615,6 +621,9 @@ function _renderizarMapaGiros() {
         dy: "0.35em",
         title: "tooltip",
       }),
+      ...(chkInicio.checked && personPoints.length ? [
+        Plot.dot(personPoints, { x: "x", y: "y", r: 5, fill: "#222", stroke: "#fff", strokeWidth: 1.5 }),
+      ] : []),
     ],
   });
 
@@ -649,7 +658,7 @@ function _renderizarMapaGiros() {
   ];
 
   const legend = document.createElement("div");
-  legend.style.cssText = `flex-shrink:0;
+  legend.style.cssText = `flex-shrink:0;width:${LEGENDA_W}px;
     background:var(--theme-background-alt);
     border:1px solid var(--theme-foreground-faintest);
     border-radius:8px;padding:8px 12px;display:flex;flex-direction:column;gap:3px;user-select:none;`;
@@ -739,61 +748,52 @@ function _renderizarMapaGiros() {
     legend.append(row);
   }
 
-  // ── Legenda de objetivos (abaixo da legenda de giros, se houver) ─────────
-  const legendObjetivos = document.createElement("div");
-  legendObjetivos.style.cssText = `flex-shrink:0;
-    background:var(--theme-background-alt);
-    border:1px solid var(--theme-foreground-faintest);
-    border-radius:8px;padding:8px 12px;display:flex;flex-direction:column;gap:4px;user-select:none;`;
+  // ── Legenda de ponto inicial ─────────────────────────────────────────────
+  if (personPoints.length) {
+    const sepIn = document.createElement("div");
+    sepIn.style.cssText = "border-top:1px solid var(--theme-foreground-faintest);margin:4px 0;";
+    legend.append(sepIn);
+    const rowIn = document.createElement("div");
+    rowIn.style.cssText = "display:flex;align-items:center;gap:6px;";
+    const dotIn = document.createElement("div");
+    dotIn.style.cssText = "width:9px;height:9px;border-radius:50%;background:#222;flex-shrink:0;border:1.5px solid #fff;box-shadow:0 0 0 1px #222;";
+    const lblIn = document.createElement("span");
+    lblIn.style.cssText = "font-size:.7rem;font-weight:600;color:var(--theme-foreground-muted);white-space:nowrap;";
+    lblIn.textContent = "Ponto Inicial";
+    rowIn.append(dotIn, lblIn);
+    legend.append(rowIn);
+  }
+
+  // ── Objetivos da cena (agrupados na legenda) ──────────────────────────────
+  const allInterRects = (getCamada("interactive_elements")?.geojson.features ?? []).map((f, i) => {
+    const r = polyToRect(f);
+    const logObj = giroState.objetivos[i];
+    const nome = logObj?.objectiveName ?? `Objetivo ${i + 1}`;
+    const concluido = logObj ? (logObj.endTime ?? 0) > 0 : false;
+    return { ...r, idx: i + 1, nome, concluido };
+  });
+
+  const sepObj = document.createElement("div");
+  sepObj.style.cssText = "border-top:1px solid var(--theme-foreground-faintest);margin:4px 0;";
+  legend.append(sepObj);
 
   const lblObj = document.createElement("div");
   lblObj.style.cssText = "font-size:.65rem;font-weight:700;color:var(--theme-foreground-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px;";
   lblObj.textContent = "Objetivos da cena";
-  legendObjetivos.append(lblObj);
-
-  const allInterRects = (getCamada("interactive_elements")?.geojson.features ?? []).map((f, i) => {
-    const r = polyToRect(f);
-    const logObj = giroState.objetivos[i];
-    const nome = logObj?.objectiveName ?? f.properties.nomeAmigavel ?? `Objetivo ${i + 1}`;
-    const concluido = logObj ? (logObj.endTime ?? 0) > 0 : false;
-    return { ...r, idx: i + 1, nome, concluido };
-  });
+  legend.append(lblObj);
 
   if (allInterRects.length === 0) {
     const vazio = document.createElement("span");
     vazio.style.cssText = "font-size:.72rem;color:var(--theme-foreground-muted);font-style:italic;";
     vazio.textContent = "Nenhum objetivo no mapa";
-    legendObjetivos.append(vazio);
+    legend.append(vazio);
   } else {
-    for (const obj of allInterRects) {
-      const row = document.createElement("div");
-      row.style.cssText = "display:flex;align-items:center;gap:6px;";
-
-      const badge = document.createElement("div");
-      badge.style.cssText = `width:14px;height:14px;border-radius:3px;flex-shrink:0;
-        background:none;border:1.5px solid #5ba85b;
-        display:flex;align-items:center;justify-content:center;`;
-      const num = document.createElement("span");
-      num.style.cssText = "font-size:.6rem;font-weight:800;color:#2d6a2d;line-height:1;";
-      num.textContent = obj.idx;
-      badge.append(num);
-
-      const nome = document.createElement("span");
-      nome.style.cssText = "font-size:.72rem;color:var(--theme-foreground);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:130px;";
-      nome.textContent = obj.nome;
-      nome.title = obj.nome;
-
-      row.append(badge, nome);
-      legendObjetivos.append(row);
-    }
+    allInterRects.forEach((obj, i) =>
+      legend.append(mkObjLegendaRow(giroState.objetivos[i], obj.idx))
+    );
   }
 
-  // Coluna lateral: legenda giros em cima, objetivos em baixo
-  const sideCol = document.createElement("div");
-  sideCol.style.cssText = "display:flex;flex-direction:column;gap:8px;flex-shrink:0;";
-  sideCol.append(legend, legendObjetivos);
-
-  wrapper.append(sideCol);
+  wrapper.append(legend);
   mapaGirosContainer.append(wrapper);
 }
 
@@ -828,14 +828,17 @@ function _renderizarHeatmap() {
   // ── Camadas base ──────────────────────────────────────────────────────────
   const getCamada = name => camadas.find(c => c.layerName === name);
   const polyToRect = f => {
-    const c = f.geometry.coordinates[0];
+    const c = f.geometry.type === "Polygon" ? f.geometry.coordinates[0] : f.geometry.coordinates;
     return { x1: c[0][0], y1: c[2][1], x2: c[2][0], y2: c[0][1], ...f.properties };
   };
   const floorRects = (getCamada("floor")?.geojson.features ?? []).map(polyToRect);
   const doorRects  = (getCamada("door_and_windows")?.geojson.features ?? []).map(polyToRect);
-  const wallFeature = getCamada("walls")?.geojson.features[0];
-  const wallEdges = (wallFeature?.geometry.coordinates ?? []).map(([p1, p2]) => ({
+  const wallFeature   = getCamada("walls")?.geojson.features[0];
+  const wallEdges     = (wallFeature?.geometry.coordinates ?? []).map(([p1, p2]) => ({
     x1: p1[0], y1: p1[1], x2: p2[0], y2: p2[1],
+  }));
+  const personPoints  = (getCamada("persons")?.geojson.features ?? []).map(f => ({
+    x: f.geometry.coordinates[0], y: f.geometry.coordinates[1], label: "Início",
   }));
 
   // interactive_elements numerados (responde ao chkObjetos)
@@ -855,7 +858,7 @@ function _renderizarHeatmap() {
   ].map(polyToRect) : [];
 
   // ── Dimensões ─────────────────────────────────────────────────────────────
-  const LEGENDA_W = 80; // largura reservada para a legenda lateral
+  const LEGENDA_W = 140; // largura reservada para a legenda lateral
   const W = (heatmapContainer.getBoundingClientRect().width || 500) - LEGENDA_W - 16;
   const scale = Math.min((W - 8) / cols, 480 / rows);
   const W2 = Math.round(cols * scale);
@@ -871,8 +874,8 @@ function _renderizarHeatmap() {
     marks: [
       Plot.rect(floorRects, {
         x1: "x1", y1: "y1", x2: "x2", y2: "y2",
-        fill: "#f0f0f0",
-        stroke: d => d.areaInterna ? "#cccccc" : "none", strokeWidth: 0.5,
+        fill: "none",
+        stroke: d => d.areaInterna ? "#cccccc" : "#e0e0e0", strokeWidth: 0.5,
       }),
       Plot.rect(doorRects, {
         x1: "x1", y1: "y1", x2: "x2", y2: "y2",
@@ -914,6 +917,9 @@ function _renderizarHeatmap() {
           title: "nomeAmigavel",
         }),
       ] : [],
+      ...(chkInicio.checked && personPoints.length ? [
+        Plot.dot(personPoints, { x: "x", y: "y", r: 5, fill: "#222", stroke: "#fff", strokeWidth: 1.5 }),
+      ] : []),
     ],
   });
 
@@ -921,10 +927,10 @@ function _renderizarHeatmap() {
   const legenda = document.createElement("div");
   legenda.style.cssText = `
     flex-shrink:0;width:${LEGENDA_W}px;
-    display:flex;flex-direction:column;align-items:center;gap:0;
+    display:flex;flex-direction:column;gap:0;
     background:var(--theme-background-alt);
     border:1px solid var(--theme-foreground-faintest);
-    border-radius:8px;padding:8px 6px 6px;`;
+    border-radius:8px;padding:8px 10px 8px;`;
 
   const titulo = document.createElement("div");
   titulo.style.cssText = "font-size:.65rem;font-weight:700;text-align:center;line-height:1.2;margin-bottom:4px;color:var(--theme-foreground);";
@@ -938,7 +944,7 @@ function _renderizarHeatmap() {
 
   // Swatches (ordem reversa: 5+ em cima, 1 em baixo — mais escuro → mais claro)
   const swatchesWrap = document.createElement("div");
-  swatchesWrap.style.cssText = "display:flex;gap:4px;align-items:stretch;";
+  swatchesWrap.style.cssText = "display:flex;gap:4px;align-items:stretch;align-self:center;";
 
   const swatchCol = document.createElement("div");
   swatchCol.style.cssText = "display:flex;flex-direction:column;gap:2px;";
@@ -962,69 +968,57 @@ function _renderizarHeatmap() {
   // Label rotacionado "N° de Ações"
   const rotLabel = document.createElement("div");
   rotLabel.style.cssText = `
-    writing-mode:vertical-rl;transform:rotate(180deg);
+    align-self:center;writing-mode:vertical-rl;transform:rotate(180deg);
     font-size:.6rem;color:var(--theme-foreground-muted);
     margin-top:6px;letter-spacing:.03em;`;
   rotLabel.textContent = "N° de Ações";
   legenda.append(rotLabel);
 
-  // ── Legenda de objetivos ──────────────────────────────────────────────────
-  const legendObjetivos = document.createElement("div");
-  legendObjetivos.style.cssText = `
-    flex-shrink:0;
-    background:var(--theme-background-alt);
-    border:1px solid var(--theme-foreground-faintest);
-    border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:4px;`;
+  if (chkInicio.checked && personPoints.length) {
+    const sepIn = document.createElement("div");
+    sepIn.style.cssText = "border-top:1px solid var(--theme-foreground-faintest);margin:4px 0;";
+    const rowIn = document.createElement("div");
+    rowIn.style.cssText = "display:flex;align-items:center;gap:5px;margin-top:2px;";
+    const dotIn = document.createElement("div");
+    dotIn.style.cssText = "width:9px;height:9px;border-radius:50%;background:#222;flex-shrink:0;border:1.5px solid #fff;box-shadow:0 0 0 1px #222;";
+    const lblIn = document.createElement("div");
+    lblIn.style.cssText = "font-size:.65rem;color:var(--theme-foreground-muted);";
+    lblIn.textContent = "Ponto Inicial";
+    rowIn.append(dotIn, lblIn);
+    legenda.append(sepIn, rowIn);
+  }
+
+  // ── Objetivos da cena (agrupados na legenda) ──────────────────────────────
+  const objData = allInterFeatures.map((f, i) => {
+    const logObj = giroState.objetivos[i];
+    const nome = logObj?.objectiveName ?? `Objetivo ${i + 1}`;
+    return { idx: i + 1, nome };
+  });
+
+  const sepObj = document.createElement("div");
+  sepObj.style.cssText = "border-top:1px solid var(--theme-foreground-faintest);margin:4px 0;";
+  legenda.append(sepObj);
 
   const lblObj = document.createElement("div");
   lblObj.style.cssText = "font-size:.65rem;font-weight:700;color:var(--theme-foreground-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px;";
   lblObj.textContent = "Objetivos da cena";
-  legendObjetivos.append(lblObj);
-
-  const objData = allInterFeatures.map((f, i) => {
-    const logObj = giroState.objetivos[i];
-    const nome = logObj?.objectiveName ?? f.properties.nomeAmigavel ?? `Objetivo ${i + 1}`;
-    return { idx: i + 1, nome };
-  });
+  legenda.append(lblObj);
 
   if (objData.length === 0) {
     const vazio = document.createElement("span");
     vazio.style.cssText = "font-size:.72rem;color:var(--theme-foreground-muted);font-style:italic;";
     vazio.textContent = "Nenhum objetivo no mapa";
-    legendObjetivos.append(vazio);
+    legenda.append(vazio);
   } else {
-    for (const obj of objData) {
-      const row = document.createElement("div");
-      row.style.cssText = "display:flex;align-items:center;gap:6px;";
-
-      const badge = document.createElement("div");
-      badge.style.cssText = `width:14px;height:14px;border-radius:3px;flex-shrink:0;
-        background:none;border:1.5px solid #5ba85b;
-        display:flex;align-items:center;justify-content:center;`;
-      const num = document.createElement("span");
-      num.style.cssText = "font-size:.6rem;font-weight:800;color:#2d6a2d;line-height:1;";
-      num.textContent = obj.idx;
-      badge.append(num);
-
-      const nomeEl = document.createElement("span");
-      nomeEl.style.cssText = "font-size:.72rem;color:var(--theme-foreground);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:130px;";
-      nomeEl.textContent = obj.nome;
-      nomeEl.title = obj.nome;
-
-      row.append(badge, nomeEl);
-      legendObjetivos.append(row);
-    }
+    objData.forEach((obj, i) =>
+      legenda.append(mkObjLegendaRow(giroState.objetivos[i], obj.idx))
+    );
   }
-
-  // Coluna lateral: cor em cima, objetivos em baixo
-  const sideCol = document.createElement("div");
-  sideCol.style.cssText = "display:flex;flex-direction:column;gap:8px;flex-shrink:0;";
-  sideCol.append(legenda, legendObjetivos);
 
   // ── Wrapper mapa + legenda ────────────────────────────────────────────────
   const wrapper = document.createElement("div");
   wrapper.style.cssText = "display:flex;align-items:flex-start;gap:8px;";
-  wrapper.append(chart, sideCol);
+  wrapper.append(chart, legenda);
   heatmapContainer.append(wrapper);
 }
 
@@ -1069,14 +1063,17 @@ function _renderizarColisao() {
   // ── Camadas base ──────────────────────────────────────────────────────────
   const getCamada = name => camadas.find(c => c.layerName === name);
   const polyToRect = f => {
-    const c = f.geometry.coordinates[0];
+    const c = f.geometry.type === "Polygon" ? f.geometry.coordinates[0] : f.geometry.coordinates;
     return { x1: c[0][0], y1: c[2][1], x2: c[2][0], y2: c[0][1], ...f.properties };
   };
   const floorRects  = (getCamada("floor")?.geojson.features ?? []).map(polyToRect);
   const doorRects   = (getCamada("door_and_windows")?.geojson.features ?? []).map(polyToRect);
-  const wallFeature = getCamada("walls")?.geojson.features[0];
-  const wallEdges   = (wallFeature?.geometry.coordinates ?? []).map(([p1, p2]) => ({
+  const wallFeature   = getCamada("walls")?.geojson.features[0];
+  const wallEdges     = (wallFeature?.geometry.coordinates ?? []).map(([p1, p2]) => ({
     x1: p1[0], y1: p1[1], x2: p2[0], y2: p2[1],
+  }));
+  const personPoints  = (getCamada("persons")?.geojson.features ?? []).map(f => ({
+    x: f.geometry.coordinates[0], y: f.geometry.coordinates[1], label: "Início",
   }));
 
   const mostrarObjetosCol = chkObjetos.checked;
@@ -1116,8 +1113,8 @@ function _renderizarColisao() {
       // Mapa base
       Plot.rect(floorRects, {
         x1: "x1", y1: "y1", x2: "x2", y2: "y2",
-        fill: "#f0f0f0",
-        stroke: d => d.areaInterna ? "#cccccc" : "none", strokeWidth: 0.5,
+        fill: "none",
+        stroke: d => d.areaInterna ? "#cccccc" : "#e0e0e0", strokeWidth: 0.5,
       }),
       Plot.rect(doorRects, {
         x1: "x1", y1: "y1", x2: "x2", y2: "y2",
@@ -1165,6 +1162,9 @@ function _renderizarColisao() {
         strokeWidth: 1.8,
         title: d => `${d.count} colisão${d.count > 1 ? "ões" : ""} — ${d.objectID}`,
       })] : [],
+      ...(chkInicio.checked && personPoints.length ? [
+        Plot.dot(personPoints, { x: "x", y: "y", r: 5, fill: "#222", stroke: "#fff", strokeWidth: 1.5 }),
+      ] : []),
     ],
   });
 
@@ -1217,31 +1217,31 @@ function _renderizarColisao() {
   }
   legenda.append(secCol);
 
+  // — Início —
+  if (chkInicio.checked && personPoints.length > 0) {
+    const secInic = mkSec("Ponto Inicial");
+    secInic.style.borderTop = "1px solid var(--theme-foreground-faintest)";
+    secInic.style.paddingTop = "8px";
+    const rowIn = document.createElement("div");
+    rowIn.style.cssText = "display:flex;align-items:center;gap:6px;";
+    const dotIn = document.createElement("div");
+    dotIn.style.cssText = "width:9px;height:9px;border-radius:50%;background:#222;flex-shrink:0;border:1.5px solid #fff;box-shadow:0 0 0 1px #222;";
+    const lblIn = document.createElement("span");
+    lblIn.style.cssText = "font-size:.68rem;color:var(--theme-foreground-muted);";
+    lblIn.textContent = "Ponto Inicial";
+    rowIn.append(dotIn, lblIn);
+    secInic.append(rowIn);
+    legenda.append(secInic);
+  }
+
   // — Objetivos —
   if (chkObjetivosCol.checked && allInterFeatures.length > 0) {
     const secObj = mkSec("Objetivos");
     secObj.style.borderTop = "1px solid var(--theme-foreground-faintest)";
     secObj.style.paddingTop = "8px";
-    allInterFeatures.forEach((f, i) => {
-      const logObj = giroState.objetivos[i];
-      const nome = logObj?.objectiveName ?? f.properties.nomeAmigavel ?? `Objetivo ${i + 1}`;
-      const row = document.createElement("div");
-      row.style.cssText = "display:flex;align-items:center;gap:5px;";
-      const badge = document.createElement("div");
-      badge.style.cssText = `width:14px;height:14px;border-radius:3px;flex-shrink:0;
-        background:none;border:1.5px solid #5ba85b;
-        display:flex;align-items:center;justify-content:center;`;
-      const num = document.createElement("span");
-      num.style.cssText = "font-size:.6rem;font-weight:800;color:#2d6a2d;line-height:1;";
-      num.textContent = i + 1;
-      badge.append(num);
-      const nomeEl = document.createElement("span");
-      nomeEl.style.cssText = "font-size:.68rem;color:var(--theme-foreground);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:88px;";
-      nomeEl.textContent = nome;
-      nomeEl.title = nome;
-      row.append(badge, nomeEl);
-      secObj.append(row);
-    });
+    allInterFeatures.forEach((f, i) =>
+      secObj.append(mkObjLegendaRow(giroState.objetivos[i], i + 1, "88px"))
+    );
     legenda.append(secObj);
   }
 
@@ -1250,6 +1250,344 @@ function _renderizarColisao() {
   wrapper.style.cssText = "display:flex;align-items:flex-start;gap:8px;";
   wrapper.append(chart, legenda);
   colisaoContainer.append(wrapper);
+}
+
+// ── Helper: linha de objetivo na legenda ──────────────────────────────────
+function mkObjLegendaRow(logObj, idx, maxWidth = "130px") {
+  const concluido = (logObj?.endTime  ?? 0) > 0;
+  const iniciado  = (logObj?.startTime ?? 0) > 0;
+  const nome = logObj?.objectiveName ?? `Objetivo ${idx}`;
+
+  const row = document.createElement("div");
+  row.style.cssText = "display:flex;align-items:center;gap:6px;";
+
+  const badge = document.createElement("div");
+  if (concluido) {
+    badge.style.cssText = "width:14px;height:14px;border-radius:3px;flex-shrink:0;background:#5ba85b;border:1.5px solid #5ba85b;display:flex;align-items:center;justify-content:center;";
+    const ck = document.createElement("span");
+    ck.style.cssText = "font-size:.6rem;font-weight:900;color:#fff;line-height:1;";
+    ck.textContent = "✓";
+    badge.append(ck);
+  } else if (!iniciado) {
+    badge.style.cssText = "width:14px;height:14px;border-radius:3px;flex-shrink:0;background:none;border:1.5px solid #bbb;display:flex;align-items:center;justify-content:center;";
+    const num = document.createElement("span");
+    num.style.cssText = "font-size:.6rem;font-weight:800;color:#aaa;line-height:1;";
+    num.textContent = idx;
+    badge.append(num);
+  } else {
+    badge.style.cssText = "width:14px;height:14px;border-radius:3px;flex-shrink:0;background:none;border:1.5px solid #5ba85b;display:flex;align-items:center;justify-content:center;";
+    const num = document.createElement("span");
+    num.style.cssText = "font-size:.6rem;font-weight:800;color:#2d6a2d;line-height:1;";
+    num.textContent = idx;
+    badge.append(num);
+  }
+
+  const nomeEl = document.createElement("span");
+  const cor = iniciado ? "var(--theme-foreground)" : "var(--theme-foreground-muted)";
+  nomeEl.style.cssText = `font-size:.72rem;color:${cor};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:${maxWidth};`;
+  nomeEl.textContent = nome;
+  nomeEl.title = nome;
+
+  row.append(badge, nomeEl);
+  return row;
+}
+
+// ── Replay de Trajetória ──────────────────────────────────────────────────
+function renderizarReplay() { try { _renderizarReplay(); } catch(e) { console.error("renderizarReplay:", e); } }
+function _renderizarReplay() {
+  if (replayTimer) { clearInterval(replayTimer); replayTimer = null; }
+  replayContainer.replaceChildren();
+
+  const { camadas, cols, rows, dadosLog } = giroState;
+  if (!camadas || cols === 0 || !dadosLog) {
+    const hint = document.createElement("div"); hint.className = "giro-hint";
+    hint.textContent = "Selecione uma sessão para ver o replay de trajetória.";
+    replayContainer.append(hint); return;
+  }
+
+  const CORES_OBJ = ["#4a90d9","#e07b54","#5ba85b","#c9a227","#9b59b6","#2eaaa8","#e41a1c","#ff7f00"];
+  const COR_RETORNO = "#999";
+  const objetivos = dadosLog.objectives ?? [];
+  const nObj = objetivos.length;
+
+  // ── Sequência de posições ────────────────────────────────────────────────
+  // Segmentos: obj[i].actions = caminho ATÉ obj[i] ser coletado.
+  // No último objetivo, a colisão com o próprio ID marca o fim do percurso;
+  // as ações após esse ponto formam o segmento final de retorno ao ponto inicial.
+  const passos = [];
+  for (const [oi, obj] of objetivos.entries()) {
+    const cor = CORES_OBJ[oi % CORES_OBJ.length];
+    const isLast = oi === nObj - 1;
+
+    // Timestamp em que o último objetivo foi coletado (colisão com próprio ID)
+    let splitTime = Infinity;
+    if (isLast) {
+      const selfCol = (obj.collisions ?? []).find(c => c.objectID === obj.objectiveID);
+      if (selfCol) splitTime = selfCol.timestamp;
+    }
+
+    for (const a of obj.actions ?? []) {
+      if (a.position == null) continue;
+      if (a.actionType !== 0) continue; // skip turn actions
+      const stepCor = (isLast && a.timestamp > splitTime) ? COR_RETORNO : cor;
+      passos.push({ x: Math.round(a.position.x) + 0.5, y: Math.round(a.position.z) - rows + 0.5, cor: stepCor, objIdx: oi });
+    }
+  }
+  const temRetorno = passos.some(p => p.cor === COR_RETORNO);
+
+  if (passos.length === 0) {
+    const hint = document.createElement("div"); hint.className = "giro-hint";
+    hint.textContent = "Nenhum dado de movimentação nessa sessão.";
+    replayContainer.append(hint); return;
+  }
+
+  // ── Camadas base ──────────────────────────────────────────────────────────
+  const getCamada = name => camadas.find(c => c.layerName === name);
+  const polyToRect = f => {
+    const c = f.geometry.type === "Polygon" ? f.geometry.coordinates[0] : f.geometry.coordinates;
+    return { x1: c[0][0], y1: c[2][1], x2: c[2][0], y2: c[0][1], ...f.properties };
+  };
+  const floorRects  = (getCamada("floor")?.geojson.features ?? []).map(polyToRect);
+  const doorRects   = (getCamada("door_and_windows")?.geojson.features ?? []).map(polyToRect);
+  const wallFeature = getCamada("walls")?.geojson.features[0];
+  const wallEdges   = (wallFeature?.geometry.coordinates ?? []).map(([p1, p2]) => ({
+    x1: p1[0], y1: p1[1], x2: p2[0], y2: p2[1],
+  }));
+  const personPoints = (getCamada("persons")?.geojson.features ?? []).map(f => ({
+    x: f.geometry.coordinates[0], y: f.geometry.coordinates[1],
+  }));
+  const allInterFeatures = getCamada("interactive_elements")?.geojson.features ?? [];
+  const interRects = chkObjetos.checked
+    ? allInterFeatures.map((f, i) => {
+        const r = polyToRect(f);
+        return { ...r, cx: (r.x1 + r.x2) / 2, cy: (r.y1 + r.y2) / 2, idx: i + 1 };
+      })
+    : [];
+  const furnRects = chkMoveis.checked ? [
+    ...(getCamada("furniture")?.geojson.features  ?? []),
+    ...(getCamada("eletronics")?.geojson.features ?? []),
+    ...(getCamada("utensils")?.geojson.features   ?? []),
+  ].map(polyToRect) : [];
+
+  // ── Dimensões ─────────────────────────────────────────────────────────────
+  const LEGENDA_W = 140;
+  const W = (replayContainer.getBoundingClientRect().width || 500) - LEGENDA_W - 16;
+  const scale = Math.min((W - 8) / cols, 480 / rows);
+  const W2 = Math.round(cols * scale);
+  const H2 = Math.round(rows * scale);
+
+  // ── Segmentos de cor por objetivo ─────────────────────────────────────────
+  function buildSegments(trail) {
+    const segs = [];
+    let cur = null;
+    for (const p of trail) {
+      if (!cur || cur.cor !== p.cor) {
+        const pts = cur ? [cur.pts[cur.pts.length - 1], p] : [p];
+        cur = { cor: p.cor, pts };
+        segs.push(cur);
+      } else {
+        cur.pts.push(p);
+      }
+    }
+    return segs;
+  }
+
+  // ── Containers DOM ────────────────────────────────────────────────────────
+  const mapDiv     = document.createElement("div");
+  const stepLabel  = document.createElement("span");
+  stepLabel.style.cssText = "font-size:.7rem;color:var(--theme-foreground-muted);min-width:72px;text-align:center;font-variant-numeric:tabular-nums;flex-shrink:0;";
+
+  // ── Função de desenho ─────────────────────────────────────────────────────
+  function drawStep(s) {
+    const trail = passos.slice(0, s + 1);
+    const head  = trail[trail.length - 1];
+    const segs  = buildSegments(trail);
+
+    const chart = Plot.plot({
+      width: W2, height: H2,
+      marginTop: 0, marginRight: 0, marginBottom: 0, marginLeft: 0,
+      x: { domain: [0, cols], axis: null },
+      y: { domain: [-rows, 0], axis: null },
+      style: { background: "transparent", overflow: "visible" },
+      marks: [
+        Plot.rect(floorRects, {
+          x1: "x1", y1: "y1", x2: "x2", y2: "y2",
+          fill: "none", stroke: d => d.areaInterna ? "#cccccc" : "#e0e0e0", strokeWidth: 0.5,
+        }),
+        Plot.rect(doorRects, { x1: "x1", y1: "y1", x2: "x2", y2: "y2", fill: "#f0f0f0", stroke: "none" }),
+        // rota fantasma segmentada por objetivo (cores esmaecidas)
+        ...buildSegments(passos).map(seg => Plot.line(seg.pts, { x: "x", y: "y", stroke: seg.cor, strokeOpacity: 0.2, strokeWidth: Math.max(scale * 0.49, 6.12), strokeLinecap: "round", strokeLinejoin: "round", curve: "linear" })),
+        // trilha percorrida colorida por objetivo
+        ...segs.map(seg => Plot.line(seg.pts, { x: "x", y: "y", stroke: seg.cor, strokeWidth: Math.max(scale * 0.255, 2), strokeLinecap: "round", strokeLinejoin: "round", curve: "linear" })),
+        ...furnRects.length ? [Plot.rect(furnRects, {
+          x1: "x1", y1: "y1", x2: "x2", y2: "y2",
+          fill: "#b0b0b0", fillOpacity: 0.35, stroke: "#888", strokeWidth: 0.7,
+        })] : [],
+        Plot.link(wallEdges, {
+          x1: "x1", y1: "y1", x2: "x2", y2: "y2",
+          stroke: "#3a3a3a", strokeWidth: Math.max(1, scale * 0.07),
+        }),
+        ...interRects.length ? [
+          Plot.rect(interRects.map(r => {
+            const mx = (r.x1 + r.x2) / 2, my = (r.y1 + r.y2) / 2;
+            const hw = (r.x2 - r.x1) * 0.25, hh = (r.y2 - r.y1) * 0.25;
+            return { ...r, x1: mx - hw, x2: mx + hw, y1: my - hh, y2: my + hh };
+          }), { x1: "x1", y1: "y1", x2: "x2", y2: "y2", fill: "none", stroke: "#5ba85b", strokeWidth: 1.2 }),
+          Plot.text(interRects, {
+            x: "cx", y: "cy", text: d => String(d.idx),
+            fontSize: Math.max(5, scale * 0.25), fill: "#2d6a2d", fontWeight: "bold",
+            textAnchor: "middle", dy: "0.35em",
+          }),
+        ] : [],
+        ...(chkInicio.checked && personPoints.length ? [
+          Plot.dot(personPoints, { x: "x", y: "y", r: 5, fill: "#222", stroke: "#fff", strokeWidth: 1.5 }),
+        ] : []),
+        // cabeça — posição atual do jogador
+        Plot.dot([head], { x: "x", y: "y", r: 6, fill: head.cor, stroke: "#fff", strokeWidth: 2 }),
+      ],
+    });
+
+    mapDiv.replaceChildren(chart);
+    stepLabel.textContent = `${s + 1} / ${passos.length}`;
+    slider.value = s;
+    dotHead.style.background = head.cor;
+    dotHead.style.boxShadow  = `0 0 0 1px ${head.cor}`;
+  }
+
+  // ── Controles ─────────────────────────────────────────────────────────────
+  let step    = passos.length - 1;
+  let playing = false;
+  let speed   = 50;
+
+  const slider = document.createElement("input");
+  slider.type = "range"; slider.min = 0; slider.max = passos.length - 1; slider.value = step;
+  slider.style.cssText = "flex:1;accent-color:#4a90d9;min-width:80px;cursor:pointer;";
+  slider.addEventListener("input", () => { step = +slider.value; drawStep(step); });
+
+  const playBtn = document.createElement("button");
+  playBtn.style.cssText = "padding:.22rem .6rem;border-radius:4px;border:1px solid var(--theme-foreground-faint);background:transparent;color:var(--theme-foreground);cursor:pointer;font-size:.85rem;font-weight:700;flex-shrink:0;";
+
+  function stopPlay() {
+    if (replayTimer) { clearInterval(replayTimer); replayTimer = null; }
+    playing = false; playBtn.textContent = "▶";
+  }
+  function startPlay() {
+    playing = true; playBtn.textContent = "⏸";
+    if (step >= passos.length - 1) step = 0;
+    replayTimer = setInterval(() => { step++; drawStep(step); if (step >= passos.length - 1) stopPlay(); }, speed);
+  }
+  playBtn.textContent = "▶";
+  playBtn.addEventListener("click", () => playing ? stopPlay() : startPlay());
+
+  const mkBtn = (txt, title, fn) => {
+    const b = document.createElement("button");
+    b.textContent = txt; b.title = title;
+    b.style.cssText = "padding:.22rem .5rem;border-radius:4px;border:1px solid var(--theme-foreground-faint);background:transparent;color:var(--theme-foreground);cursor:pointer;font-size:.8rem;flex-shrink:0;";
+    b.addEventListener("click", fn); return b;
+  };
+
+  const speedSel = document.createElement("select");
+  speedSel.style.cssText = "font-size:.72rem;border:1px solid var(--theme-foreground-faint);border-radius:4px;background:var(--theme-background);color:var(--theme-foreground);padding:.1rem .3rem;cursor:pointer;flex-shrink:0;";
+  for (const [lbl, ms] of [["Lento", 120], ["Normal", 50], ["Rápido", 20], ["Turbo", 5]]) {
+    const op = document.createElement("option"); op.value = ms; op.textContent = lbl;
+    if (ms === speed) op.selected = true;
+    speedSel.append(op);
+  }
+  speedSel.addEventListener("change", () => { speed = +speedSel.value; if (playing) { stopPlay(); startPlay(); } });
+
+  const controls = document.createElement("div");
+  controls.style.cssText = "display:flex;align-items:center;gap:5px;margin-bottom:6px;flex-wrap:wrap;";
+  const btnPrev = mkBtn("◀", "Passo anterior", () => { stopPlay(); if (step > 0) { step--; drawStep(step); } });
+  const btnNext = mkBtn("▷", "Próximo passo", () => { stopPlay(); if (step < passos.length - 1) { step++; drawStep(step); } });
+  controls.append(
+    mkBtn("⏮", "Início", () => { stopPlay(); step = 0; drawStep(step); }),
+    btnPrev,
+    playBtn,
+    btnNext,
+    mkBtn("⏭", "Final", () => { stopPlay(); step = passos.length - 1; drawStep(step); }),
+    slider, stepLabel, speedSel,
+  );
+
+  // ── Legenda ───────────────────────────────────────────────────────────────
+  const legenda = document.createElement("div");
+  legenda.style.cssText = `
+    flex-shrink:0;width:${LEGENDA_W}px;
+    display:flex;flex-direction:column;gap:0;
+    background:var(--theme-background-alt);
+    border:1px solid var(--theme-foreground-faintest);
+    border-radius:8px;padding:8px 10px 8px;`;
+
+  const lblSeg = document.createElement("div");
+  lblSeg.style.cssText = "font-size:.65rem;font-weight:700;color:var(--theme-foreground-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;";
+  lblSeg.textContent = "Segmentos";
+  legenda.append(lblSeg);
+
+  // Linhas coloridas por objetivo + segmento de retorno
+  const mkSegRow = (cor, label) => {
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;align-items:center;gap:6px;margin-bottom:3px;";
+    const linha = document.createElement("div");
+    linha.style.cssText = `width:22px;height:3px;border-radius:2px;background:${cor};flex-shrink:0;`;
+    const lbl = document.createElement("span");
+    lbl.style.cssText = "font-size:.68rem;color:var(--theme-foreground-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100px;";
+    lbl.textContent = label; lbl.title = label;
+    row.append(linha, lbl); return row;
+  };
+  for (const [oi, obj] of objetivos.entries()) {
+    const cor = CORES_OBJ[oi % CORES_OBJ.length];
+    const nome = obj.objectiveName ?? `Objetivo ${oi + 1}`;
+    legenda.append(mkSegRow(cor, nome));
+  }
+  if (temRetorno) legenda.append(mkSegRow(COR_RETORNO, "Retorno ao início"));
+
+  const sepGhost = document.createElement("div");
+  sepGhost.style.cssText = "border-top:1px solid var(--theme-foreground-faintest);margin:4px 0;";
+  const rowGhost = document.createElement("div");
+  rowGhost.style.cssText = "display:flex;align-items:center;gap:6px;margin-bottom:3px;";
+  const linhaGhost = document.createElement("div");
+  linhaGhost.style.cssText = "width:22px;height:2px;border-radius:2px;background:#ccc;flex-shrink:0;";
+  const lblGhost = document.createElement("span");
+  lblGhost.style.cssText = "font-size:.68rem;color:var(--theme-foreground-muted);";
+  lblGhost.textContent = "Rota completa";
+  rowGhost.append(linhaGhost, lblGhost);
+  legenda.append(sepGhost, rowGhost);
+
+  if (chkInicio.checked && personPoints.length) {
+    const sepIn = document.createElement("div");
+    sepIn.style.cssText = "border-top:1px solid var(--theme-foreground-faintest);margin:4px 0;";
+    const rowIn = document.createElement("div");
+    rowIn.style.cssText = "display:flex;align-items:center;gap:6px;";
+    const dotIn = document.createElement("div");
+    dotIn.style.cssText = "width:9px;height:9px;border-radius:50%;background:#222;flex-shrink:0;border:1.5px solid #fff;box-shadow:0 0 0 1px #222;";
+    const lblIn = document.createElement("span");
+    lblIn.style.cssText = "font-size:.68rem;color:var(--theme-foreground-muted);";
+    lblIn.textContent = "Ponto Inicial";
+    rowIn.append(dotIn, lblIn); legenda.append(sepIn, rowIn);
+  }
+
+  const sepHead = document.createElement("div");
+  sepHead.style.cssText = "border-top:1px solid var(--theme-foreground-faintest);margin:4px 0;";
+  const rowHead = document.createElement("div");
+  rowHead.style.cssText = "display:flex;align-items:center;gap:6px;";
+  const dotHead = document.createElement("div");
+  const initHeadCor = passos[0]?.cor ?? CORES_OBJ[0];
+  dotHead.style.cssText = `width:10px;height:10px;border-radius:50%;background:${initHeadCor};flex-shrink:0;border:2px solid var(--theme-background);box-shadow:0 0 0 1px ${initHeadCor};`;
+  const lblHead = document.createElement("span");
+  lblHead.style.cssText = "font-size:.68rem;color:var(--theme-foreground-muted);";
+  lblHead.textContent = "Posição atual";
+  rowHead.append(dotHead, lblHead); legenda.append(sepHead, rowHead);
+
+  // ── Montar ────────────────────────────────────────────────────────────────
+  const mapRow = document.createElement("div");
+  mapRow.style.cssText = "display:flex;align-items:flex-start;gap:8px;";
+  mapRow.append(mapDiv, legenda);
+
+  const wrapper = document.createElement("div");
+  wrapper.style.cssText = "display:flex;flex-direction:column;gap:0;";
+  wrapper.append(controls, mapRow);
+  replayContainer.append(wrapper);
+
+  drawStep(step);
 }
 
 // Cache de camadas por id_mapa para não reprocessar o mesmo XML
@@ -1312,6 +1650,7 @@ async function carregarMapaGiros(id_log) {
     renderizarMapaGiros();
     renderizarHeatmap();
     renderizarColisao();
+    renderizarReplay();
     renderizarLateralidade();
     renderizarComportamental();
   } catch (e) {
@@ -1330,6 +1669,9 @@ function ph(classe, icon, label) {
 }
 
 const phTrafego        = ph("ph-trafego",       "🗺️",  "Mapa de Tráfego e Giros");
+const replayContainer = document.createElement("div");
+replayContainer.style.cssText = "min-height:180px";
+let replayTimer = null;
 const heatmapContainer = document.createElement("div");
 heatmapContainer.style.cssText = "min-height:180px";
 const colisaoContainer = document.createElement("div");
@@ -1827,6 +2169,7 @@ const colEsquerda = html`<div class="col-esquerda">
 
       <div class="filtro-titulo">Camadas do Mapa</div>
       <div class="filtro-check">
+        <label>${chkInicio} <span class="filtro-icon">⬤</span> Ponto Inicial</label>
         <label>${chkObjetos}<span class="filtro-icon">◎</span> Objetivos da cena</label>
         <label>${chkMoveis} <span class="filtro-icon">▭</span> Móveis / objetos</label>
       </div>
@@ -1847,6 +2190,12 @@ const colEsquerda = html`<div class="col-esquerda">
 </div>`;
 
 const colCentro = html`<div class="col-centro">
+
+  <!-- Replay de Trajetória -->
+  <div class="painel">
+    <div class="painel-titulo">Replay de Trajetória</div>
+    <div class="painel-corpo">${replayContainer}</div>
+  </div>
 
   <!-- Mapa de Giros -->
   <div class="painel">
