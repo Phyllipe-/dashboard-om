@@ -64,31 +64,32 @@ export function extrairSegmentos(dadosLog, rows) {
 
 /**
  * Extrai colisões de objectives[].collisions[].
- * Usa Math.ceil em x e z e aplica a mesma inversão de eixo Z.
- * Agrupa pelo tile resultante e conta ocorrências.
+ * Agrupa por objectID (semântico) e usa a posição média real — sem arredondamento.
  *
  * @param {object} dadosLog
  * @param {number} rows — número de linhas do mapa
  * @returns {Array<{ geoX, geoY, count, objectID }>}
  */
 export function extrairColisoes(dadosLog, rows) {
-  const contagem = new Map();
-  const objeto   = new Map();
+  const grupos = new Map(); // objectID → { sumX, sumZ, count }
 
   for (const obj of dadosLog?.objectives ?? []) {
     for (const c of obj.collisions ?? []) {
-      const geoX = Math.ceil(c.position?.x ?? 0);
-      const geoY = Math.ceil(c.position?.z ?? 0) - rows;
-      const key  = `${geoX},${geoY}`;
-      contagem.set(key, (contagem.get(key) ?? 0) + 1);
-      if (!objeto.has(key)) objeto.set(key, c.objectID ?? "");
+      const key = c.objectID ?? "";
+      if (!grupos.has(key)) grupos.set(key, { sumX: 0, sumZ: 0, count: 0 });
+      const g = grupos.get(key);
+      g.sumX += c.position?.x ?? 0;
+      g.sumZ += c.position?.z ?? 0;
+      g.count++;
     }
   }
 
-  return [...contagem.entries()].map(([key, count]) => {
-    const [geoX, geoY] = key.split(",").map(Number);
-    return { geoX, geoY, count, objectID: objeto.get(key) };
-  });
+  return [...grupos.entries()].map(([objectID, g]) => ({
+    geoX: g.sumX / g.count,
+    geoY: g.sumZ / g.count - rows,
+    count: g.count,
+    objectID,
+  }));
 }
 
 /**

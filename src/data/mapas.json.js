@@ -29,7 +29,7 @@ if (fs.existsSync(pastaXML)) {
     // Tiles navegáveis: floor + door_and_windows excluindo janelas
     const getCamada = name => camadas.find(c => c.layerName === name);
     const polyToRect = f => {
-      const c = f.geometry.coordinates[0];
+      const c = f.geometry.type === "Polygon" ? f.geometry.coordinates[0] : f.geometry.coordinates;
       return { x1: c[0][0], y1: c[2][1], x2: c[2][0], y2: c[0][1], ...f.properties };
     };
     const floorRects = (getCamada("floor")?.geojson.features ?? []).map(polyToRect);

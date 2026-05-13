@@ -226,7 +226,8 @@ toc: false
 import { requireAuth, logout } from "../auth.js";
 import { fetchAlunos, fetchAluno, fetchSessoes, fetchSessao, fetchAnalises, fetchMetricas } from "../api.js";
 import * as Plot from "npm:@observablehq/plot";
-import { detectarGiros } from "../lib/sessao/giros.js";
+import * as d3   from "npm:d3";
+import { detectarGiros, MARCADORES_GIRO } from "../lib/sessao/giros.js";
 import { contarMovimentos, heatTilesParaRects, corHeatmap, PALETA_HEATMAP } from "../lib/sessao/heatmap.js";
 import { extrairSegmentos, extrairColisoes, corSegmento, raioColisao } from "../lib/sessao/colisao.js";
 import { extrairLateralidade, corpoSVGElement, COR_DIREITA as LAT_COR_DIR, COR_ESQUERDA as LAT_COR_ESQ } from "../lib/sessao/lateralidade.js";
@@ -287,11 +288,12 @@ const chkObjetos  = html`<input type="checkbox" checked>`;  // interactive_eleme
 const chkMoveis   = html`<input type="checkbox" checked>`;  // furniture/eletronics/utensils
 
 // Re-renderiza os mapas quando qualquer checkbox de camada mudar
-[chkObjetos, chkMoveis].forEach(c => c.addEventListener("change", () => {
+[chkObjetos, chkMoveis, chkInicio].forEach(c => c.addEventListener("change", () => {
   const sy = window.scrollY;
   if (giroState.camadas) renderizarMapaGiros();
   if (giroState.camadas) renderizarHeatmap();
   if (giroState.camadas) renderizarColisao();
+  if (giroState.camadas) renderizarReplay();
   requestAnimationFrame(() => window.scrollTo({ top: sy, behavior: "instant" }));
 }));
 
@@ -419,6 +421,8 @@ function aplicarFiltroSessoes() {
     renderizarMapaGiros();
     renderizarHeatmap();
     renderizarColisao();
+    renderizarReplay();
+    renderizarReplayD3();
     renderizarLateralidade();
     renderizarComportamental();
   }
@@ -493,7 +497,7 @@ function _renderizarMapaGiros() {
   // ── Extrair camadas do GeoJSON ──────────────────────────────────────────
   const getCamada = name => camadas.find(c => c.layerName === name);
   const polyToRect = f => {
-    const c = f.geometry.coordinates[0];
+    const c = f.geometry.type === "Polygon" ? f.geometry.coordinates[0] : f.geometry.coordinates;
     return { x1: c[0][0], y1: c[2][1], x2: c[2][0], y2: c[0][1], ...f.properties };
   };
 
@@ -507,9 +511,12 @@ function _renderizarMapaGiros() {
     ...(getCamada("eletronics")?.geojson.features ?? []),
     ...(getCamada("utensils")?.geojson.features   ?? []),
   ].map(polyToRect) : [];
-  const wallFeature = getCamada("walls")?.geojson.features[0];
-  const wallEdges = (wallFeature?.geometry.coordinates ?? []).map(([p1, p2]) => ({
+  const wallFeature   = getCamada("walls")?.geojson.features[0];
+  const wallEdges     = (wallFeature?.geometry.coordinates ?? []).map(([p1, p2]) => ({
     x1: p1[0], y1: p1[1], x2: p2[0], y2: p2[1],
+  }));
+  const personPoints  = (getCamada("persons")?.geojson.features ?? []).map(f => ({
+    x: f.geometry.coordinates[0], y: f.geometry.coordinates[1], label: "Início",
   }));
 
   // interactive_elements: polígonos com centro e índice numerado
@@ -545,7 +552,8 @@ function _renderizarMapaGiros() {
   }));
 
   // ── Dimensões ──────────────────────────────────────────────────────────
-  const W = (mapaGirosContainer.clientWidth || 460) - 110; // 110 = legenda
+  const LEGENDA_W = 140;
+  const W = (mapaGirosContainer.getBoundingClientRect().width || 500) - LEGENDA_W - 16;
   const scale = Math.min((W - 8) / cols, 480 / rows);
   const W2 = Math.round(cols * scale);
   const H2 = Math.round(rows * scale);
@@ -567,8 +575,8 @@ function _renderizarMapaGiros() {
     marks: [
       Plot.rect(floorRects, {
         x1: "x1", y1: "y1", x2: "x2", y2: "y2",
-        fill: "#f0f0f0",
-        stroke: d => d.areaInterna ? "#cccccc" : "none", strokeWidth: 0.5,
+        fill: "none",
+        stroke: d => d.areaInterna ? "#cccccc" : "#e0e0e0", strokeWidth: 0.5,
       }),
       Plot.rect(doorRects, {
         x1: "x1", y1: "y1", x2: "x2", y2: "y2",
@@ -615,6 +623,9 @@ function _renderizarMapaGiros() {
         dy: "0.35em",
         title: "tooltip",
       }),
+      ...(chkInicio.checked && personPoints.length ? [
+        Plot.dot(personPoints, { x: "x", y: "y", r: 5, fill: "#222", stroke: "#fff", strokeWidth: 1.5 }),
+      ] : []),
     ],
   });
 
@@ -649,7 +660,7 @@ function _renderizarMapaGiros() {
   ];
 
   const legend = document.createElement("div");
-  legend.style.cssText = `flex-shrink:0;
+  legend.style.cssText = `flex-shrink:0;width:${LEGENDA_W}px;
     background:var(--theme-background-alt);
     border:1px solid var(--theme-foreground-faintest);
     border-radius:8px;padding:8px 12px;display:flex;flex-direction:column;gap:3px;user-select:none;`;
@@ -739,61 +750,52 @@ function _renderizarMapaGiros() {
     legend.append(row);
   }
 
-  // ── Legenda de objetivos (abaixo da legenda de giros, se houver) ─────────
-  const legendObjetivos = document.createElement("div");
-  legendObjetivos.style.cssText = `flex-shrink:0;
-    background:var(--theme-background-alt);
-    border:1px solid var(--theme-foreground-faintest);
-    border-radius:8px;padding:8px 12px;display:flex;flex-direction:column;gap:4px;user-select:none;`;
+  // ── Legenda de ponto inicial ─────────────────────────────────────────────
+  if (personPoints.length) {
+    const sepIn = document.createElement("div");
+    sepIn.style.cssText = "border-top:1px solid var(--theme-foreground-faintest);margin:4px 0;";
+    legend.append(sepIn);
+    const rowIn = document.createElement("div");
+    rowIn.style.cssText = "display:flex;align-items:center;gap:6px;";
+    const dotIn = document.createElement("div");
+    dotIn.style.cssText = "width:9px;height:9px;border-radius:50%;background:#222;flex-shrink:0;border:1.5px solid #fff;box-shadow:0 0 0 1px #222;";
+    const lblIn = document.createElement("span");
+    lblIn.style.cssText = "font-size:.7rem;font-weight:600;color:var(--theme-foreground-muted);white-space:nowrap;";
+    lblIn.textContent = "Ponto Inicial";
+    rowIn.append(dotIn, lblIn);
+    legend.append(rowIn);
+  }
+
+  // ── Objetivos da cena (agrupados na legenda) ──────────────────────────────
+  const allInterRects = (getCamada("interactive_elements")?.geojson.features ?? []).map((f, i) => {
+    const r = polyToRect(f);
+    const logObj = giroState.objetivos[i];
+    const nome = logObj?.objectiveName ?? `Objetivo ${i + 1}`;
+    const concluido = logObj ? (logObj.endTime ?? 0) > 0 : false;
+    return { ...r, idx: i + 1, nome, concluido };
+  });
+
+  const sepObj = document.createElement("div");
+  sepObj.style.cssText = "border-top:1px solid var(--theme-foreground-faintest);margin:4px 0;";
+  legend.append(sepObj);
 
   const lblObj = document.createElement("div");
   lblObj.style.cssText = "font-size:.65rem;font-weight:700;color:var(--theme-foreground-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px;";
   lblObj.textContent = "Objetivos da cena";
-  legendObjetivos.append(lblObj);
-
-  const allInterRects = (getCamada("interactive_elements")?.geojson.features ?? []).map((f, i) => {
-    const r = polyToRect(f);
-    const logObj = giroState.objetivos[i];
-    const nome = logObj?.objectiveName ?? f.properties.nomeAmigavel ?? `Objetivo ${i + 1}`;
-    const concluido = logObj ? (logObj.endTime ?? 0) > 0 : false;
-    return { ...r, idx: i + 1, nome, concluido };
-  });
+  legend.append(lblObj);
 
   if (allInterRects.length === 0) {
     const vazio = document.createElement("span");
     vazio.style.cssText = "font-size:.72rem;color:var(--theme-foreground-muted);font-style:italic;";
     vazio.textContent = "Nenhum objetivo no mapa";
-    legendObjetivos.append(vazio);
+    legend.append(vazio);
   } else {
-    for (const obj of allInterRects) {
-      const row = document.createElement("div");
-      row.style.cssText = "display:flex;align-items:center;gap:6px;";
-
-      const badge = document.createElement("div");
-      badge.style.cssText = `width:14px;height:14px;border-radius:3px;flex-shrink:0;
-        background:none;border:1.5px solid #5ba85b;
-        display:flex;align-items:center;justify-content:center;`;
-      const num = document.createElement("span");
-      num.style.cssText = "font-size:.6rem;font-weight:800;color:#2d6a2d;line-height:1;";
-      num.textContent = obj.idx;
-      badge.append(num);
-
-      const nome = document.createElement("span");
-      nome.style.cssText = "font-size:.72rem;color:var(--theme-foreground);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:130px;";
-      nome.textContent = obj.nome;
-      nome.title = obj.nome;
-
-      row.append(badge, nome);
-      legendObjetivos.append(row);
-    }
+    allInterRects.forEach((obj, i) =>
+      legend.append(mkObjLegendaRow(giroState.objetivos[i], obj.idx))
+    );
   }
 
-  // Coluna lateral: legenda giros em cima, objetivos em baixo
-  const sideCol = document.createElement("div");
-  sideCol.style.cssText = "display:flex;flex-direction:column;gap:8px;flex-shrink:0;";
-  sideCol.append(legend, legendObjetivos);
-
-  wrapper.append(sideCol);
+  wrapper.append(legend);
   mapaGirosContainer.append(wrapper);
 }
 
@@ -828,14 +830,17 @@ function _renderizarHeatmap() {
   // ── Camadas base ──────────────────────────────────────────────────────────
   const getCamada = name => camadas.find(c => c.layerName === name);
   const polyToRect = f => {
-    const c = f.geometry.coordinates[0];
+    const c = f.geometry.type === "Polygon" ? f.geometry.coordinates[0] : f.geometry.coordinates;
     return { x1: c[0][0], y1: c[2][1], x2: c[2][0], y2: c[0][1], ...f.properties };
   };
   const floorRects = (getCamada("floor")?.geojson.features ?? []).map(polyToRect);
   const doorRects  = (getCamada("door_and_windows")?.geojson.features ?? []).map(polyToRect);
-  const wallFeature = getCamada("walls")?.geojson.features[0];
-  const wallEdges = (wallFeature?.geometry.coordinates ?? []).map(([p1, p2]) => ({
+  const wallFeature   = getCamada("walls")?.geojson.features[0];
+  const wallEdges     = (wallFeature?.geometry.coordinates ?? []).map(([p1, p2]) => ({
     x1: p1[0], y1: p1[1], x2: p2[0], y2: p2[1],
+  }));
+  const personPoints  = (getCamada("persons")?.geojson.features ?? []).map(f => ({
+    x: f.geometry.coordinates[0], y: f.geometry.coordinates[1], label: "Início",
   }));
 
   // interactive_elements numerados (responde ao chkObjetos)
@@ -855,7 +860,7 @@ function _renderizarHeatmap() {
   ].map(polyToRect) : [];
 
   // ── Dimensões ─────────────────────────────────────────────────────────────
-  const LEGENDA_W = 80; // largura reservada para a legenda lateral
+  const LEGENDA_W = 140; // largura reservada para a legenda lateral
   const W = (heatmapContainer.getBoundingClientRect().width || 500) - LEGENDA_W - 16;
   const scale = Math.min((W - 8) / cols, 480 / rows);
   const W2 = Math.round(cols * scale);
@@ -871,8 +876,8 @@ function _renderizarHeatmap() {
     marks: [
       Plot.rect(floorRects, {
         x1: "x1", y1: "y1", x2: "x2", y2: "y2",
-        fill: "#f0f0f0",
-        stroke: d => d.areaInterna ? "#cccccc" : "none", strokeWidth: 0.5,
+        fill: "none",
+        stroke: d => d.areaInterna ? "#cccccc" : "#e0e0e0", strokeWidth: 0.5,
       }),
       Plot.rect(doorRects, {
         x1: "x1", y1: "y1", x2: "x2", y2: "y2",
@@ -914,6 +919,9 @@ function _renderizarHeatmap() {
           title: "nomeAmigavel",
         }),
       ] : [],
+      ...(chkInicio.checked && personPoints.length ? [
+        Plot.dot(personPoints, { x: "x", y: "y", r: 5, fill: "#222", stroke: "#fff", strokeWidth: 1.5 }),
+      ] : []),
     ],
   });
 
@@ -921,10 +929,10 @@ function _renderizarHeatmap() {
   const legenda = document.createElement("div");
   legenda.style.cssText = `
     flex-shrink:0;width:${LEGENDA_W}px;
-    display:flex;flex-direction:column;align-items:center;gap:0;
+    display:flex;flex-direction:column;gap:0;
     background:var(--theme-background-alt);
     border:1px solid var(--theme-foreground-faintest);
-    border-radius:8px;padding:8px 6px 6px;`;
+    border-radius:8px;padding:8px 10px 8px;`;
 
   const titulo = document.createElement("div");
   titulo.style.cssText = "font-size:.65rem;font-weight:700;text-align:center;line-height:1.2;margin-bottom:4px;color:var(--theme-foreground);";
@@ -938,7 +946,7 @@ function _renderizarHeatmap() {
 
   // Swatches (ordem reversa: 5+ em cima, 1 em baixo — mais escuro → mais claro)
   const swatchesWrap = document.createElement("div");
-  swatchesWrap.style.cssText = "display:flex;gap:4px;align-items:stretch;";
+  swatchesWrap.style.cssText = "display:flex;gap:4px;align-items:stretch;align-self:center;";
 
   const swatchCol = document.createElement("div");
   swatchCol.style.cssText = "display:flex;flex-direction:column;gap:2px;";
@@ -962,69 +970,57 @@ function _renderizarHeatmap() {
   // Label rotacionado "N° de Ações"
   const rotLabel = document.createElement("div");
   rotLabel.style.cssText = `
-    writing-mode:vertical-rl;transform:rotate(180deg);
+    align-self:center;writing-mode:vertical-rl;transform:rotate(180deg);
     font-size:.6rem;color:var(--theme-foreground-muted);
     margin-top:6px;letter-spacing:.03em;`;
   rotLabel.textContent = "N° de Ações";
   legenda.append(rotLabel);
 
-  // ── Legenda de objetivos ──────────────────────────────────────────────────
-  const legendObjetivos = document.createElement("div");
-  legendObjetivos.style.cssText = `
-    flex-shrink:0;
-    background:var(--theme-background-alt);
-    border:1px solid var(--theme-foreground-faintest);
-    border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:4px;`;
+  if (chkInicio.checked && personPoints.length) {
+    const sepIn = document.createElement("div");
+    sepIn.style.cssText = "border-top:1px solid var(--theme-foreground-faintest);margin:4px 0;";
+    const rowIn = document.createElement("div");
+    rowIn.style.cssText = "display:flex;align-items:center;gap:5px;margin-top:2px;";
+    const dotIn = document.createElement("div");
+    dotIn.style.cssText = "width:9px;height:9px;border-radius:50%;background:#222;flex-shrink:0;border:1.5px solid #fff;box-shadow:0 0 0 1px #222;";
+    const lblIn = document.createElement("div");
+    lblIn.style.cssText = "font-size:.65rem;color:var(--theme-foreground-muted);";
+    lblIn.textContent = "Ponto Inicial";
+    rowIn.append(dotIn, lblIn);
+    legenda.append(sepIn, rowIn);
+  }
+
+  // ── Objetivos da cena (agrupados na legenda) ──────────────────────────────
+  const objData = allInterFeatures.map((f, i) => {
+    const logObj = giroState.objetivos[i];
+    const nome = logObj?.objectiveName ?? `Objetivo ${i + 1}`;
+    return { idx: i + 1, nome };
+  });
+
+  const sepObj = document.createElement("div");
+  sepObj.style.cssText = "border-top:1px solid var(--theme-foreground-faintest);margin:4px 0;";
+  legenda.append(sepObj);
 
   const lblObj = document.createElement("div");
   lblObj.style.cssText = "font-size:.65rem;font-weight:700;color:var(--theme-foreground-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px;";
   lblObj.textContent = "Objetivos da cena";
-  legendObjetivos.append(lblObj);
-
-  const objData = allInterFeatures.map((f, i) => {
-    const logObj = giroState.objetivos[i];
-    const nome = logObj?.objectiveName ?? f.properties.nomeAmigavel ?? `Objetivo ${i + 1}`;
-    return { idx: i + 1, nome };
-  });
+  legenda.append(lblObj);
 
   if (objData.length === 0) {
     const vazio = document.createElement("span");
     vazio.style.cssText = "font-size:.72rem;color:var(--theme-foreground-muted);font-style:italic;";
     vazio.textContent = "Nenhum objetivo no mapa";
-    legendObjetivos.append(vazio);
+    legenda.append(vazio);
   } else {
-    for (const obj of objData) {
-      const row = document.createElement("div");
-      row.style.cssText = "display:flex;align-items:center;gap:6px;";
-
-      const badge = document.createElement("div");
-      badge.style.cssText = `width:14px;height:14px;border-radius:3px;flex-shrink:0;
-        background:none;border:1.5px solid #5ba85b;
-        display:flex;align-items:center;justify-content:center;`;
-      const num = document.createElement("span");
-      num.style.cssText = "font-size:.6rem;font-weight:800;color:#2d6a2d;line-height:1;";
-      num.textContent = obj.idx;
-      badge.append(num);
-
-      const nomeEl = document.createElement("span");
-      nomeEl.style.cssText = "font-size:.72rem;color:var(--theme-foreground);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:130px;";
-      nomeEl.textContent = obj.nome;
-      nomeEl.title = obj.nome;
-
-      row.append(badge, nomeEl);
-      legendObjetivos.append(row);
-    }
+    objData.forEach((obj, i) =>
+      legenda.append(mkObjLegendaRow(giroState.objetivos[i], obj.idx))
+    );
   }
-
-  // Coluna lateral: cor em cima, objetivos em baixo
-  const sideCol = document.createElement("div");
-  sideCol.style.cssText = "display:flex;flex-direction:column;gap:8px;flex-shrink:0;";
-  sideCol.append(legenda, legendObjetivos);
 
   // ── Wrapper mapa + legenda ────────────────────────────────────────────────
   const wrapper = document.createElement("div");
   wrapper.style.cssText = "display:flex;align-items:flex-start;gap:8px;";
-  wrapper.append(chart, sideCol);
+  wrapper.append(chart, legenda);
   heatmapContainer.append(wrapper);
 }
 
@@ -1055,7 +1051,6 @@ function _renderizarColisao() {
 
   // ── Dados ─────────────────────────────────────────────────────────────────
   const segmentos  = extrairSegmentos(dadosLog, rows);
-  const colisoes   = extrairColisoes(dadosLog, rows);
   const maxSeg     = segmentos.length ? Math.max(...segmentos.map(s => s.count)) : 1;
 
   // Pontos visitados para dots azuis nos nós da trajetória
@@ -1069,14 +1064,17 @@ function _renderizarColisao() {
   // ── Camadas base ──────────────────────────────────────────────────────────
   const getCamada = name => camadas.find(c => c.layerName === name);
   const polyToRect = f => {
-    const c = f.geometry.coordinates[0];
+    const c = f.geometry.type === "Polygon" ? f.geometry.coordinates[0] : f.geometry.coordinates;
     return { x1: c[0][0], y1: c[2][1], x2: c[2][0], y2: c[0][1], ...f.properties };
   };
   const floorRects  = (getCamada("floor")?.geojson.features ?? []).map(polyToRect);
   const doorRects   = (getCamada("door_and_windows")?.geojson.features ?? []).map(polyToRect);
-  const wallFeature = getCamada("walls")?.geojson.features[0];
-  const wallEdges   = (wallFeature?.geometry.coordinates ?? []).map(([p1, p2]) => ({
+  const wallFeature   = getCamada("walls")?.geojson.features[0];
+  const wallEdges     = (wallFeature?.geometry.coordinates ?? []).map(([p1, p2]) => ({
     x1: p1[0], y1: p1[1], x2: p2[0], y2: p2[1],
+  }));
+  const personPoints  = (getCamada("persons")?.geojson.features ?? []).map(f => ({
+    x: f.geometry.coordinates[0], y: f.geometry.coordinates[1], label: "Início",
   }));
 
   const mostrarObjetosCol = chkObjetos.checked;
@@ -1096,14 +1094,104 @@ function _renderizarColisao() {
     ...(getCamada("utensils")?.geojson.features   ?? []),
   ].map(polyToRect) : [];
 
+  // ── Colisões: snap por nome + proximidade ("imã") ────────────────────────
+  // Para cada hit individual:
+  //   distância efetiva = distância geométrica + penalidade de nome
+  // Elementos cujo nome contém tokens do objectID (ou vice-versa) têm
+  // penalidade 0 e são preferidos; os demais recebem +1000 (último recurso).
+  // Após o snap individual, os pontos são agrupados e a média é calculada.
+  {
+    // Extrai todos os valores string das propriedades de uma feature como
+    // string pesquisável em minúsculas.
+    function fNameStr(f) {
+      return Object.values(f.properties ?? {})
+        .filter(v => typeof v === "string").join(" ").toLowerCase();
+    }
+    // Penalidade de nome: 0 se algum token do objectID aparece no nameStr
+    // ou algum token do nameStr aparece no objectID; 1000 caso contrário.
+    function namePenalty(objectID, nameStr) {
+      const objLow  = objectID.toLowerCase();
+      const objToks = objLow.split(/[_\-\s]+/).filter(t => t.length > 2);
+      const nmToks  = nameStr.split(/\s+/).filter(t => t.length > 2);
+      const match   = objToks.some(t => nameStr.includes(t))
+                   || nmToks.some(t => objLow.includes(t));
+      return match ? 0 : 1000;
+    }
+
+    // Features de rect com string de nome para matching
+    const snapFeatures = [
+      ...(getCamada("door_and_windows")?.geojson.features     ?? []),
+      ...(getCamada("furniture")?.geojson.features             ?? []),
+      ...(getCamada("eletronics")?.geojson.features            ?? []),
+      ...(getCamada("utensils")?.geojson.features              ?? []),
+      ...(getCamada("interactive_elements")?.geojson.features  ?? []),
+    ].map(f => {
+      const c = f.geometry.type === "Polygon" ? f.geometry.coordinates[0] : f.geometry.coordinates;
+      const xs = c.map(p => p[0]), ys = c.map(p => p[1]);
+      return { x1: Math.min(...xs), y1: Math.min(...ys),
+               x2: Math.max(...xs), y2: Math.max(...ys), nameStr: fNameStr(f) };
+    });
+    // Paredes não têm propriedades por segmento; atribuímos um nome sintético.
+    const wallNameStr = "wall brick stone fence barrier";
+
+    function nearestOnRect(px, py, r) {
+      const cx = Math.max(r.x1, Math.min(r.x2, px));
+      const cy = Math.max(r.y1, Math.min(r.y2, py));
+      return [cx, cy, Math.hypot(px - cx, py - cy)];
+    }
+    function nearestOnSeg(px, py, x1, y1, x2, y2) {
+      const dx = x2 - x1, dy = y2 - y1, len2 = dx*dx + dy*dy;
+      if (len2 === 0) return [x1, y1, Math.hypot(px - x1, py - y1)];
+      const t = Math.max(0, Math.min(1, ((px - x1)*dx + (py - y1)*dy) / len2));
+      const nx = x1 + t*dx, ny = y1 + t*dy;
+      return [nx, ny, Math.hypot(px - nx, py - ny)];
+    }
+
+    const MAX_SNAP = 2.0; // tiles — limiar geométrico máximo para aceitar o snap
+    const colGrupos = new Map();
+    for (const obj of dadosLog?.objectives ?? []) {
+      for (const c of obj.collisions ?? []) {
+        const key = c.objectID ?? "";
+        let px = c.position?.x ?? 0;
+        let py = (c.position?.z ?? 0) - rows;
+
+        let bestEff = Infinity, bestGeo = Infinity, bestX = px, bestY = py;
+        for (const r of snapFeatures) {
+          const [cx, cy, geo] = nearestOnRect(px, py, r);
+          const eff = geo + namePenalty(key, r.nameStr);
+          if (eff < bestEff) { bestEff = eff; bestGeo = geo; bestX = cx; bestY = cy; }
+        }
+        for (const e of wallEdges) {
+          const [nx, ny, geo] = nearestOnSeg(px, py, e.x1, e.y1, e.x2, e.y2);
+          const eff = geo + namePenalty(key, wallNameStr);
+          if (eff < bestEff) { bestEff = eff; bestGeo = geo; bestX = nx; bestY = ny; }
+        }
+        if (bestGeo <= MAX_SNAP) { px = bestX; py = bestY; }
+
+        if (!colGrupos.has(key)) colGrupos.set(key, { sumX: 0, sumY: 0, count: 0 });
+        const g = colGrupos.get(key);
+        g.sumX += px; g.sumY += py; g.count++;
+      }
+    }
+    var colisoes = [...colGrupos.entries()].map(([objectID, g]) => ({
+      geoX: g.sumX / g.count, geoY: g.sumY / g.count,
+      count: g.count, objectID,
+    }));
+  }
+
   // ── Dimensões ─────────────────────────────────────────────────────────────
   const LEGENDA_W = 140;
   const W     = (colisaoContainer.getBoundingClientRect().width || 500) - LEGENDA_W - 16;
   const scale = Math.min((W - 8) / cols, 480 / rows);
   const W2    = Math.round(cols * scale);
   const H2    = Math.round(rows * scale);
-  const dotR  = 2;  // raio dos nós da trajetória (diâmetro 4px fixo)
-  const colR  = Math.max(3,   scale * 0.12);  // raio fixo dos círculos de colisão
+  const dotR    = 2;  // raio dos nós da trajetória (diâmetro 4px fixo)
+  const maxCount = colisoes.length ? Math.max(...colisoes.map(c => c.count)) : 1;
+  const rMin = Math.max(2, scale * 0.12);   // ~12% do tile, mínimo legível
+  const rMax = Math.max(rMin, scale * 0.42); // ~42% do tile — cabe dentro do tile
+  const colRadius = count => maxCount <= 1
+    ? rMin
+    : rMin + (rMax - rMin) * Math.sqrt((count - 1) / (maxCount - 1));
 
   // ── Plot ─────────────────────────────────────────────────────────────────
   const chart = Plot.plot({
@@ -1116,8 +1204,8 @@ function _renderizarColisao() {
       // Mapa base
       Plot.rect(floorRects, {
         x1: "x1", y1: "y1", x2: "x2", y2: "y2",
-        fill: "#f0f0f0",
-        stroke: d => d.areaInterna ? "#cccccc" : "none", strokeWidth: 0.5,
+        fill: "none",
+        stroke: d => d.areaInterna ? "#cccccc" : "#e0e0e0", strokeWidth: 0.5,
       }),
       Plot.rect(doorRects, {
         x1: "x1", y1: "y1", x2: "x2", y2: "y2",
@@ -1157,14 +1245,22 @@ function _renderizarColisao() {
         }),
       ] : [],
       // Colisões: círculo vermelho — sem fill, contorno (posição real do log)
-      ...chkColisaoPoints.checked && colisoes.length ? [Plot.dot(colisoes, {
-        x: "geoX", y: "geoY",
-        r: colR,
-        fill: "none",
-        stroke: "rgba(200,20,20,0.90)",
-        strokeWidth: 1.8,
-        title: d => `${d.count} colisão${d.count > 1 ? "ões" : ""} — ${d.objectID}`,
-      })] : [],
+      ...chkColisaoPoints.checked && colisoes.length ? [
+        Plot.dot(colisoes, {
+          x: "geoX", y: "geoY",
+          r: { value: d => colRadius(d.count), scale: null },
+          fill: "none",
+          stroke: "rgba(200,20,20,0.90)",
+          strokeWidth: 1.8,
+        }),
+        Plot.tip(colisoes, Plot.pointer({
+          x: "geoX", y: "geoY",
+          title: d => `${d.objectID}\n${d.count} colisão${d.count !== 1 ? "ões" : ""}\nX: ${d.geoX.toFixed(1)}  Z: ${(d.geoY + rows).toFixed(1)}`,
+        })),
+      ] : [],
+      ...(chkInicio.checked && personPoints.length ? [
+        Plot.dot(personPoints, { x: "x", y: "y", r: 5, fill: "#222", stroke: "#fff", strokeWidth: 1.5 }),
+      ] : []),
     ],
   });
 
@@ -1202,46 +1298,60 @@ function _renderizarColisao() {
   }
   legenda.append(secTraj);
 
-  // — Colisões —
+  // — Colisões — SVG inline com o mesmo r do Plot.dot (garante tamanho idêntico ao mapa)
   const secCol = mkSec("Colisões");
-  for (const { label, d } of [{ label: "1", d: 8 }, { label: "2–3", d: 12 }, { label: "4+", d: 18 }]) {
+  const legendCounts = maxCount === 1
+    ? [1]
+    : [...new Set([1, Math.round(maxCount / 2), maxCount])];
+  const svgNS = "http://www.w3.org/2000/svg";
+  for (const count of legendCounts) {
+    const r  = colRadius(count);
+    const sz = Math.ceil(r * 2 + 4); // +4 para acomodar stroke
     const row = document.createElement("div");
     row.style.cssText = "display:flex;align-items:center;gap:6px;";
-    const circ = document.createElement("div");
-    circ.style.cssText = `width:${d}px;height:${d}px;border-radius:50%;background:none;border:1.8px solid rgba(200,20,20,0.90);flex-shrink:0;`;
+    const svg  = document.createElementNS(svgNS, "svg");
+    svg.setAttribute("width",  sz); svg.setAttribute("height", sz);
+    svg.style.flexShrink = "0";
+    const circ = document.createElementNS(svgNS, "circle");
+    circ.setAttribute("cx", sz / 2); circ.setAttribute("cy", sz / 2);
+    circ.setAttribute("r",  r);
+    circ.setAttribute("fill",         "none");
+    circ.setAttribute("stroke",       "rgba(200,20,20,0.90)");
+    circ.setAttribute("stroke-width", "1.8");
+    svg.append(circ);
     const lbl = document.createElement("span");
     lbl.style.cssText = "font-size:.68rem;color:var(--theme-foreground-muted);";
-    lbl.textContent = label;
-    row.append(circ, lbl);
+    lbl.textContent = count === 1 ? "1 vez" : `${count} vezes`;
+    row.append(svg, lbl);
     secCol.append(row);
   }
   legenda.append(secCol);
+
+  // — Início —
+  if (chkInicio.checked && personPoints.length > 0) {
+    const secInic = mkSec("Ponto Inicial");
+    secInic.style.borderTop = "1px solid var(--theme-foreground-faintest)";
+    secInic.style.paddingTop = "8px";
+    const rowIn = document.createElement("div");
+    rowIn.style.cssText = "display:flex;align-items:center;gap:6px;";
+    const dotIn = document.createElement("div");
+    dotIn.style.cssText = "width:9px;height:9px;border-radius:50%;background:#222;flex-shrink:0;border:1.5px solid #fff;box-shadow:0 0 0 1px #222;";
+    const lblIn = document.createElement("span");
+    lblIn.style.cssText = "font-size:.68rem;color:var(--theme-foreground-muted);";
+    lblIn.textContent = "Ponto Inicial";
+    rowIn.append(dotIn, lblIn);
+    secInic.append(rowIn);
+    legenda.append(secInic);
+  }
 
   // — Objetivos —
   if (chkObjetivosCol.checked && allInterFeatures.length > 0) {
     const secObj = mkSec("Objetivos");
     secObj.style.borderTop = "1px solid var(--theme-foreground-faintest)";
     secObj.style.paddingTop = "8px";
-    allInterFeatures.forEach((f, i) => {
-      const logObj = giroState.objetivos[i];
-      const nome = logObj?.objectiveName ?? f.properties.nomeAmigavel ?? `Objetivo ${i + 1}`;
-      const row = document.createElement("div");
-      row.style.cssText = "display:flex;align-items:center;gap:5px;";
-      const badge = document.createElement("div");
-      badge.style.cssText = `width:14px;height:14px;border-radius:3px;flex-shrink:0;
-        background:none;border:1.5px solid #5ba85b;
-        display:flex;align-items:center;justify-content:center;`;
-      const num = document.createElement("span");
-      num.style.cssText = "font-size:.6rem;font-weight:800;color:#2d6a2d;line-height:1;";
-      num.textContent = i + 1;
-      badge.append(num);
-      const nomeEl = document.createElement("span");
-      nomeEl.style.cssText = "font-size:.68rem;color:var(--theme-foreground);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:88px;";
-      nomeEl.textContent = nome;
-      nomeEl.title = nome;
-      row.append(badge, nomeEl);
-      secObj.append(row);
-    });
+    allInterFeatures.forEach((f, i) =>
+      secObj.append(mkObjLegendaRow(giroState.objetivos[i], i + 1, "88px"))
+    );
     legenda.append(secObj);
   }
 
@@ -1250,6 +1360,1294 @@ function _renderizarColisao() {
   wrapper.style.cssText = "display:flex;align-items:flex-start;gap:8px;";
   wrapper.append(chart, legenda);
   colisaoContainer.append(wrapper);
+}
+
+// ── Helper: linha de objetivo na legenda ──────────────────────────────────
+function mkObjLegendaRow(logObj, idx, maxWidth = "130px") {
+  const concluido = (logObj?.endTime  ?? 0) > 0;
+  const iniciado  = (logObj?.startTime ?? 0) > 0;
+  const nome = logObj?.objectiveName ?? `Objetivo ${idx}`;
+
+  const row = document.createElement("div");
+  row.style.cssText = "display:flex;align-items:center;gap:6px;";
+
+  const badge = document.createElement("div");
+  if (concluido) {
+    badge.style.cssText = "width:14px;height:14px;border-radius:3px;flex-shrink:0;background:#5ba85b;border:1.5px solid #5ba85b;display:flex;align-items:center;justify-content:center;";
+    const ck = document.createElement("span");
+    ck.style.cssText = "font-size:.6rem;font-weight:900;color:#fff;line-height:1;";
+    ck.textContent = "✓";
+    badge.append(ck);
+  } else if (!iniciado) {
+    badge.style.cssText = "width:14px;height:14px;border-radius:3px;flex-shrink:0;background:none;border:1.5px solid #bbb;display:flex;align-items:center;justify-content:center;";
+    const num = document.createElement("span");
+    num.style.cssText = "font-size:.6rem;font-weight:800;color:#aaa;line-height:1;";
+    num.textContent = idx;
+    badge.append(num);
+  } else {
+    badge.style.cssText = "width:14px;height:14px;border-radius:3px;flex-shrink:0;background:none;border:1.5px solid #5ba85b;display:flex;align-items:center;justify-content:center;";
+    const num = document.createElement("span");
+    num.style.cssText = "font-size:.6rem;font-weight:800;color:#2d6a2d;line-height:1;";
+    num.textContent = idx;
+    badge.append(num);
+  }
+
+  const nomeEl = document.createElement("span");
+  const cor = iniciado ? "var(--theme-foreground)" : "var(--theme-foreground-muted)";
+  nomeEl.style.cssText = `font-size:.72rem;color:${cor};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:${maxWidth};`;
+  nomeEl.textContent = nome;
+  nomeEl.title = nome;
+
+  row.append(badge, nomeEl);
+  return row;
+}
+
+// ── Replay de Trajetória ──────────────────────────────────────────────────
+function renderizarReplay() { try { _renderizarReplay(); } catch(e) { console.error("renderizarReplay:", e); } }
+function _renderizarReplay() {
+  if (replayTimer) { clearInterval(replayTimer); replayTimer = null; }
+  replayContainer.replaceChildren();
+
+  const { camadas, cols, rows, dadosLog, giros: girosDetectados } = giroState;
+  if (!camadas || cols === 0 || !dadosLog) {
+    const hint = document.createElement("div"); hint.className = "giro-hint";
+    hint.textContent = "Selecione uma sessão para ver o replay de trajetória.";
+    replayContainer.append(hint); return;
+  }
+
+  const CORES_OBJ = ["#4a90d9","#e07b54","#5ba85b","#c9a227","#9b59b6","#2eaaa8","#e41a1c","#ff7f00"];
+  const COR_RETORNO = "#999";
+  const objetivos = dadosLog.objectives ?? [];
+  const nObj = objetivos.length;
+  const mapaFinalizado = dadosLog.results?.clearedMap === true;
+
+  // ── Helpers de mapa (necessários antes da construção dos passos) ─────────────
+  const getCamada = name => camadas.find(c => c.layerName === name);
+  const polyToRect = f => {
+    const c = f.geometry.type === "Polygon" ? f.geometry.coordinates[0] : f.geometry.coordinates;
+    return { x1: c[0][0], y1: c[2][1], x2: c[2][0], y2: c[0][1], ...f.properties };
+  };
+  const allInterFeatures = getCamada("interactive_elements")?.geojson.features ?? [];
+  const personPoints = (getCamada("persons")?.geojson.features ?? []).map(f => ({
+    x: f.geometry.coordinates[0], y: f.geometry.coordinates[1],
+    direcaoIndex: f.properties?.direcaoIndex,
+  }));
+
+  // Seta de visão do jogador — definida aqui para que startX/startY (usados na
+  // construção de passos) possam referenciar personArrows[0].
+  const BASIC_TO_DEG = [270, 315, 0, 45, 90, 135, 180, 225];
+  const gpsArrow = {
+    draw(context, size) {
+      const r = Math.sqrt(size / Math.PI) * 1.1;
+      context.moveTo(0, -r * 1.4);
+      context.lineTo(r * 0.8, r * 0.9);
+      context.lineTo(0, r * 0.3);
+      context.lineTo(-r * 0.8, r * 0.9);
+      context.closePath();
+    }
+  };
+  const personArrows = personPoints.map(p => ({
+    x: p.x, y: p.y,
+    heading: BASIC_TO_DEG[p.direcaoIndex] ?? 0,
+  }));
+
+  // Cruz de 5 tiles centrada em cada objetivo (para visualização e lógica de corte)
+  function inCross(px, py, cx, cy) {
+    const dx = Math.abs(px - cx), dy = Math.abs(py - cy);
+    return (dx <= 0.5 && dy <= 1.5) || (dy <= 0.5 && dx <= 1.5);
+  }
+
+  // ── Sequência de posições ────────────────────────────────────────────────
+  // Todas as ações walk de todos os objetivos, ordenadas por timestamp.
+  const allActions = [];
+  for (const [oi, obj] of objetivos.entries()) {
+    for (const a of obj.actions ?? []) {
+      if (a.position == null || a.actionType !== 0) continue;
+      allActions.push({ ...a, srcObjIdx: oi });
+    }
+  }
+  allActions.sort((a, b) => a.timestamp - b.timestamp);
+
+  // Posição inicial do jogador (primeiro step registrado) em coordenadas de Plot
+  const startPx = allActions.length > 0 ? Math.round(allActions[0].position.x) + 0.5 : 0;
+  const startPy = allActions.length > 0 ? Math.round(allActions[0].position.z) - rows + 0.5 : 0;
+
+  // Para cada feature interativa do mapa, conta passos dentro da cruz (hits)
+  // e determina o cutoff de segmento = último passo da PRIMEIRA visita contígua
+  // à cruz (ignora revisitas posteriores que contaminariam o corte de cor).
+  const featureStats = allInterFeatures.map((f, fi) => {
+    const r = polyToRect(f);
+    const cx = (r.x1 + r.x2) / 2, cy = (r.y1 + r.y2) / 2;
+    let hits = 0;
+    let inVisit = false, firstExitT = null, lastInCrossT = null, visitEnded = false;
+    for (const a of allActions) {
+      const px = Math.round(a.position.x) + 0.5;
+      const py = Math.round(a.position.z) - rows + 0.5;
+      const inC = inCross(px, py, cx, cy);
+      if (inC) hits++;
+      if (!visitEnded) {
+        if (inC) { inVisit = true; lastInCrossT = a.timestamp; }
+        else if (inVisit) { firstExitT = lastInCrossT; visitEnded = true; }
+      }
+    }
+    // Se a sessão terminou dentro da cruz, usa o último passo registrado
+    if (inVisit && !visitEnded) firstExitT = lastInCrossT;
+    return { cx, cy, origIdx: fi, hits, lastInCrossT: firstExitT };
+  });
+
+  // Seleciona nObj features: prioriza as mais visitadas (hits > 0 = jogador passou
+  // pela cruz), completa com não-visitadas apenas se necessário (sessão incompleta).
+  // Depois ordena por distância Manhattan do ponto inicial (mais próximo = segmento 0).
+  const visited   = featureStats.filter(f => f.hits > 0).sort((a, b) => b.hits - a.hits);
+  const unvisited = featureStats.filter(f => f.hits === 0);
+  const objCenters = [...visited, ...unvisited]
+    .slice(0, nObj)
+    .sort((a, b) =>
+      (Math.abs(a.cx - startPx) + Math.abs(a.cy - startPy)) -
+      (Math.abs(b.cx - startPx) + Math.abs(b.cy - startPy))
+    );
+
+  // Cortes de segmento i→i+1: último passo dentro da cruz do objetivo i.
+  const cutoffs = objCenters.slice(0, nObj - 1).map(c => c.lastInCrossT ?? Infinity);
+
+  // Retorno ao ponto inicial: começa ao sair da cruz do último objetivo.
+  // Fallback: endTime do último objetivo quando cross-zone não foi detectado.
+  const lastObjEndTime = objetivos.reduce((maxT, obj) => Math.max(maxT, obj.endTime ?? 0), 0);
+  const returnCutoff = nObj > 0 && objCenters[nObj - 1]
+    ? (objCenters[nObj - 1].lastInCrossT ?? (mapaFinalizado && lastObjEndTime > 0 ? lastObjEndTime : Infinity))
+    : Infinity;
+
+
+  // Walk + turn em ordem temporal — turns criam passos próprios para que
+  // a seta só gire quando o usuário clicar "próximo" naquele passo.
+  const allEventsRaw = [];
+  for (const [, obj] of objetivos.entries()) {
+    for (const a of obj.actions ?? []) {
+      if (a.position == null) continue;
+      allEventsRaw.push(a);
+    }
+  }
+  allEventsRaw.sort((a, b) => a.timestamp - b.timestamp);
+
+  const passos = [];
+
+  // Turns e walks que ocorrem antes de o jogador sair do tile inicial são tratados
+  // como "estado inicial" (step 0) e não entram em passos.
+  // • initHeadingOffset: rotação acumulada dos turns iniciais
+  let hadFirstWalk  = false;         // true após o jogador sair do tile de partida
+  let initHeadingOffset = 0;         // graus acumulados dos turns pré-walk
+
+  // Tile de partida (posição XML do personagem — âncora da linha)
+  const startX = personArrows.length > 0 ? personArrows[0].x : null;
+  const startY = personArrows.length > 0 ? personArrows[0].y : null;
+
+  let ei = 0;
+  while (ei < allEventsRaw.length) {
+    const a = allEventsRaw[ei];
+
+    if (a.actionType === 0) {
+      let segIdx = 0;
+      for (let i = 0; i < cutoffs.length; i++) {
+        if (a.timestamp > cutoffs[i]) segIdx = i + 1;
+      }
+      const isReturn = segIdx === nObj - 1 && a.timestamp > returnCutoff;
+      const cor = mapaFinalizado
+        ? (isReturn ? COR_RETORNO : CORES_OBJ[segIdx % CORES_OBJ.length])
+        : CORES_OBJ[0];
+      const nx = Math.round(a.position.x) + 0.5;
+      const ny = Math.round(a.position.z) - rows + 0.5;
+
+      // Pula walks no tile de partida enquanto o jogador ainda não saiu de lá
+      if (!hadFirstWalk && startX !== null &&
+          Math.abs(nx - startX) < 0.01 && Math.abs(ny - startY) < 0.01) {
+        ei++; continue;
+      }
+
+      const prevP = passos[passos.length - 1];
+      if (!prevP || prevP.x !== nx || prevP.y !== ny) {
+        passos.push({ x: nx, y: ny, cor, objIdx: segIdx, isTurn: false });
+        hadFirstWalk = true;
+      }
+      ei++;
+
+    } else if (a.actionType === 1) {
+      // Conta quantos turns consecutivos têm mesma direção e mesma posição (= um grupo de giro)
+      const dir = a.direction;
+      const px = a.position?.x ?? 0, pz = a.position?.z ?? 0;
+      let count = 0;
+      while (
+        ei + count < allEventsRaw.length &&
+        allEventsRaw[ei + count].actionType === 1 &&
+        allEventsRaw[ei + count].direction === dir &&
+        Math.abs((allEventsRaw[ei + count].position?.x ?? 0) - px) < 0.1 &&
+        Math.abs((allEventsRaw[ei + count].position?.z ?? 0) - pz) < 0.1
+      ) count++;
+
+      if (!hadFirstWalk) {
+        // Turn inicial (antes de sair do tile de partida): vai para o estado inicial, não para passos
+        for (let k = 0; k < count; k++) {
+          initHeadingOffset = (initHeadingOffset + (dir === 4 ? 90 : -90) + 360) % 360;
+        }
+      } else {
+        // Turn mid-rota: cria passos próprios (um por evento, herdando posição do paso anterior)
+        const prev = passos[passos.length - 1];
+        const baseX    = prev ? prev.x      : Math.round(px) + 0.5;
+        const baseY    = prev ? prev.y      : Math.round(pz) - rows + 0.5;
+        const baseCor  = prev ? prev.cor    : CORES_OBJ[0];
+        const baseObjI = prev ? prev.objIdx : 0;
+        for (let k = 0; k < count; k++) {
+          passos.push({
+            x: baseX, y: baseY, cor: baseCor, objIdx: baseObjI,
+            isTurn: true, direction: dir,
+          });
+        }
+      }
+      ei += count;
+
+    } else {
+      ei++;
+    }
+  }
+  // Trecho sintético de retorno: só adicionado quando não há passos reais de retorno
+  // (sessão sem AddStartingPoint, ou log encerrado antes do aluno voltar ao início).
+  // Quando o retorno foi gravado, os passos reais já têm cor COR_RETORNO e mostram
+  // o trajeto real — adicionar âncoras extras causaria uma diagonal artificial.
+  const hasRealReturn = mapaFinalizado && passos.some(p => p.cor === COR_RETORNO);
+  if (mapaFinalizado && !hasRealReturn && passos.length > 0 && nObj > 0 && objCenters[nObj - 1]) {
+    const { cx, cy } = objCenters[nObj - 1];
+    const dest = startX !== null ? { x: startX, y: startY } : passos[0];
+    passos.push({ x: cx, y: cy, cor: COR_RETORNO, objIdx: nObj - 1 });
+    if (Math.abs(cx - dest.x) > 0.5 || Math.abs(cy - dest.y) > 0.5)
+      passos.push({ x: dest.x, y: dest.y, cor: COR_RETORNO, objIdx: nObj - 1 });
+  }
+  const temRetorno = mapaFinalizado && passos.some(p => p.cor === COR_RETORNO);
+  if (temRetorno && startX !== null) {
+    const lastRW = [...passos].reverse().find(p => p.cor === COR_RETORNO && !p.isTurn);
+    if (lastRW) {
+      const adx = Math.abs(startX - lastRW.x);
+      const ady = Math.abs(startY - lastRW.y);
+      if (adx + ady === 1) {
+        passos.push({ x: startX, y: startY, cor: COR_RETORNO, objIdx: nObj - 1, isTurn: false });
+      }
+    }
+  }
+
+  // Índices de fim de cada segmento de cor (última posição antes da troca de cor).
+  // Usado pelos botões ⏮/⏭ para navegar trecho a trecho.
+  // segmentEnds guarda valores de step (não índices de passos):
+  // step s = estado após passos[0..s-1] aplicados. O fim de um segmento em passos[i-1]
+  // corresponde a step i (inclui aquela ação mas não a próxima).
+  const segmentEnds = [];
+  for (let i = 1; i < passos.length; i++) {
+    if (passos[i].cor !== passos[i - 1].cor) segmentEnds.push(i);
+  }
+  segmentEnds.push(passos.length);
+
+  if (passos.length === 0) {
+    const hint = document.createElement("div"); hint.className = "giro-hint";
+    hint.textContent = "Nenhum dado de movimentação nessa sessão.";
+    replayContainer.append(hint); return;
+  }
+
+  // Âncora de linha: posição XML do personagem. Injetada no início da trail de
+  // linha para que o step 1 (primeiro walk real) já tenha 2 pontos → linha visível.
+  const lineAnchor = startX !== null
+    ? { x: startX, y: startY, cor: passos[0]?.cor ?? CORES_OBJ[0], objIdx: 0 }
+    : null;
+  // Heading inicial efetivo: heading do XML + rotação dos turns iniciais
+  const effectiveInitialH = ((personArrows[0]?.heading ?? 0) + initHeadingOffset + 360) % 360;
+
+  // ── Camadas base ──────────────────────────────────────────────────────────
+  const floorRects  = (getCamada("floor")?.geojson.features ?? []).map(polyToRect);
+  const doorRects   = (getCamada("door_and_windows")?.geojson.features ?? []).map(polyToRect);
+  const wallFeature = getCamada("walls")?.geojson.features[0];
+  const wallEdges   = (wallFeature?.geometry.coordinates ?? []).map(([p1, p2]) => ({
+    x1: p1[0], y1: p1[1], x2: p2[0], y2: p2[1],
+  }));
+  // Numeração dos objetivos pelo índice ordenado por distância (mesmo que objCenters)
+  const interRects = chkObjetos.checked && mapaFinalizado
+    ? objCenters.map((c, sortedIdx) => {
+        const r = polyToRect(allInterFeatures[c.origIdx]);
+        return { ...r, cx: c.cx, cy: c.cy, idx: sortedIdx + 1 };
+      })
+    : [];
+  const furnRects = chkMoveis.checked ? [
+    ...(getCamada("furniture")?.geojson.features  ?? []),
+    ...(getCamada("eletronics")?.geojson.features ?? []),
+    ...(getCamada("utensils")?.geojson.features   ?? []),
+  ].map(polyToRect) : [];
+
+  // ── Dimensões ─────────────────────────────────────────────────────────────
+  const LEGENDA_W = 140;
+  const W = (replayContainer.getBoundingClientRect().width || 500) - LEGENDA_W - 16;
+  const scale = Math.min((W - 8) / cols, 480 / rows);
+  const W2 = Math.round(cols * scale);
+  const H2 = Math.round(rows * scale);
+
+
+  // ── Segmentos de cor por objetivo ─────────────────────────────────────────
+  function buildSegments(trail) {
+    const segs = [];
+    let cur = null;
+    for (const p of trail) {
+      if (!cur || cur.cor !== p.cor) {
+        const pts = cur ? [cur.pts[cur.pts.length - 1], p] : [p];
+        cur = { cor: p.cor, pts };
+        segs.push(cur);
+      } else {
+        cur.pts.push(p);
+      }
+    }
+    return segs;
+  }
+
+  // ── Containers DOM ────────────────────────────────────────────────────────
+  const mapDiv     = document.createElement("div");
+  const stepLabel  = document.createElement("span");
+  stepLabel.style.cssText = "font-size:.7rem;color:var(--theme-foreground-muted);min-width:72px;text-align:center;font-variant-numeric:tabular-nums;flex-shrink:0;";
+
+  // ── Função de desenho ─────────────────────────────────────────────────────
+  // Pré-computa ghost trail (walk-only + âncora) uma vez — é imutável
+  const ghostWalkTrail = passos.filter(p => !p.isTurn);
+  const ghostLineTrail = lineAnchor ? [lineAnchor, ...ghostWalkTrail] : ghostWalkTrail;
+  const ghostSegs = buildSegments(ghostLineTrail);
+
+  function drawStep(s) {
+    const trail = passos.slice(0, s);           // s=0 → vazio; s=N → N ações aplicadas
+    const head  = trail.length > 0 ? trail[trail.length - 1] : null;
+
+    // Para desenho de linha: apenas walks + âncora inicial.
+    // Turns não deslocam o jogador — ficam no mesmo tile — e distorceriam a linha.
+    const walkTrail = trail.filter(p => !p.isTurn);
+    const lineTrail = lineAnchor ? [lineAnchor, ...walkTrail] : walkTrail;
+    const segs = buildSegments(lineTrail);
+
+    const chart = Plot.plot({
+      width: W2, height: H2,
+      marginTop: 0, marginRight: 0, marginBottom: 0, marginLeft: 0,
+      x: { domain: [0, cols], axis: null },
+      y: { domain: [-rows, 0], axis: null },
+      style: { background: "transparent", overflow: "visible" },
+      marks: [
+        Plot.rect(floorRects, {
+          x1: "x1", y1: "y1", x2: "x2", y2: "y2",
+          fill: "none", stroke: d => d.areaInterna ? "#cccccc" : "#e0e0e0", strokeWidth: 0.5,
+        }),
+        Plot.rect(doorRects, { x1: "x1", y1: "y1", x2: "x2", y2: "y2", fill: "#f0f0f0", stroke: "none" }),
+        // rota fantasma walk-only com âncora (cores esmaecidas) — apenas em sessões finalizadas
+        ...(mapaFinalizado ? ghostSegs.map(seg => Plot.line(seg.pts, { x: "x", y: "y", stroke: seg.cor, strokeOpacity: 0.2, strokeWidth: Math.max(scale * 0.49, 6.12), strokeLinecap: "round", strokeLinejoin: "round", curve: "linear" })) : []),
+        // trilha percorrida (walk-only + âncora) colorida por objetivo
+        ...segs.map(seg => Plot.line(seg.pts, { x: "x", y: "y", stroke: seg.cor, strokeWidth: Math.max(scale * 0.255, 2), strokeLinecap: "round", strokeLinejoin: "round", curve: "linear" })),
+        ...furnRects.length ? [Plot.rect(furnRects, {
+          x1: "x1", y1: "y1", x2: "x2", y2: "y2",
+          fill: "#b0b0b0", fillOpacity: 0.35, stroke: "#888", strokeWidth: 0.7,
+        })] : [],
+        Plot.link(wallEdges, {
+          x1: "x1", y1: "y1", x2: "x2", y2: "y2",
+          stroke: "#3a3a3a", strokeWidth: Math.max(1, scale * 0.07),
+        }),
+        ...interRects.length ? [
+          Plot.rect(interRects.map(r => {
+            const mx = (r.x1 + r.x2) / 2, my = (r.y1 + r.y2) / 2;
+            const hw = (r.x2 - r.x1) * 0.25, hh = (r.y2 - r.y1) * 0.25;
+            return { ...r, x1: mx - hw, x2: mx + hw, y1: my - hh, y2: my + hh };
+          }), { x1: "x1", y1: "y1", x2: "x2", y2: "y2", fill: "none", stroke: "#5ba85b", strokeWidth: 1.2 }),
+          Plot.text(interRects, {
+            x: "cx", y: "cy", text: d => String(d.idx),
+            fontSize: Math.max(5, scale * 0.25), fill: "#2d6a2d", fontWeight: "bold",
+            textAnchor: "middle", dy: "0.35em",
+          }),
+        ] : [],
+        // Seta: effectiveInitialH já inclui turns pré-walk; trail acumula turns mid-rota
+        ...(() => {
+          if (!personArrows.length) return [];
+          const arrowPos = head
+            ? { x: head.x, y: head.y }
+            : { x: personArrows[0].x, y: personArrows[0].y };
+          const currentH = trail
+            .filter(p => p.isTurn)
+            .reduce((h, p) => (h + (p.direction === 4 ? 90 : -90) + 360) % 360, effectiveInitialH);
+          return [Plot.dot([{ ...arrowPos, heading: currentH }], {
+            x: "x", y: "y", symbol: gpsArrow, r: 9,
+            rotate: d => d.heading,
+            fill: "#222", stroke: "#fff", strokeWidth: 1.5,
+          })];
+        })(),
+      ],
+    });
+
+    mapDiv.replaceChildren(chart);
+    stepLabel.textContent = `${s} / ${passos.length}`;
+    slider.value = s;
+    if (head) {
+      dotHead.style.background = head.cor;
+      dotHead.style.boxShadow  = `0 0 0 1px ${head.cor}`;
+    }
+  }
+
+  // ── Controles ─────────────────────────────────────────────────────────────
+  let step    = passos.length;   // exibe replay completo na abertura
+  let playing = false;
+  let speed   = 50;
+
+  const slider = document.createElement("input");
+  slider.type = "range"; slider.min = 0; slider.max = passos.length; slider.value = step;
+  slider.style.cssText = "flex:1;accent-color:#4a90d9;min-width:80px;cursor:pointer;";
+  slider.addEventListener("input", () => { step = +slider.value; drawStep(step); });
+
+  const playBtn = document.createElement("button");
+  playBtn.style.cssText = "padding:.22rem .6rem;border-radius:4px;border:1px solid var(--theme-foreground-faint);background:transparent;color:var(--theme-foreground);cursor:pointer;font-size:.85rem;font-weight:700;flex-shrink:0;";
+
+  function stopPlay() {
+    if (replayTimer) { clearInterval(replayTimer); replayTimer = null; }
+    playing = false; playBtn.textContent = "▶";
+  }
+  function startPlay() {
+    playing = true; playBtn.textContent = "⏸";
+    if (step >= passos.length) step = 0;
+    replayTimer = setInterval(() => { step++; drawStep(step); if (step >= passos.length) stopPlay(); }, speed);
+  }
+  playBtn.textContent = "▶";
+  playBtn.addEventListener("click", () => playing ? stopPlay() : startPlay());
+
+  const mkBtn = (txt, title, fn) => {
+    const b = document.createElement("button");
+    b.textContent = txt; b.title = title;
+    b.style.cssText = "padding:.22rem .5rem;border-radius:4px;border:1px solid var(--theme-foreground-faint);background:transparent;color:var(--theme-foreground);cursor:pointer;font-size:.8rem;flex-shrink:0;";
+    b.addEventListener("click", fn); return b;
+  };
+
+  const speedSel = document.createElement("select");
+  speedSel.style.cssText = "font-size:.72rem;border:1px solid var(--theme-foreground-faint);border-radius:4px;background:var(--theme-background);color:var(--theme-foreground);padding:.1rem .3rem;cursor:pointer;flex-shrink:0;";
+  for (const [lbl, ms] of [["Lento", 120], ["Normal", 50], ["Rápido", 20], ["Turbo", 5]]) {
+    const op = document.createElement("option"); op.value = ms; op.textContent = lbl;
+    if (ms === speed) op.selected = true;
+    speedSel.append(op);
+  }
+  speedSel.addEventListener("change", () => { speed = +speedSel.value; if (playing) { stopPlay(); startPlay(); } });
+
+  const controls = document.createElement("div");
+  controls.style.cssText = "display:flex;align-items:center;gap:5px;margin-bottom:6px;flex-wrap:wrap;";
+  const btnPrev = mkBtn("◀", "Passo anterior", () => { stopPlay(); if (step > 0) { step--; drawStep(step); } });
+  const btnNext = mkBtn("▷", "Próximo passo", () => { stopPlay(); if (step < passos.length) { step++; drawStep(step); } });
+  // ⏮ → fim do segmento anterior (ou passo 0 se já no primeiro segmento)
+  // ⏭ → fim do próximo segmento (mostra o trecho completo até a próxima transição de cor)
+  const goSegPrev = () => {
+    stopPlay();
+    const prev = [...segmentEnds].reverse().find(e => e < step);
+    step = prev ?? 0;
+    drawStep(step);
+  };
+  const goSegNext = () => {
+    stopPlay();
+    const next = segmentEnds.find(e => e > step);
+    step = next ?? passos.length;
+    drawStep(step);
+  };
+  controls.append(
+    mkBtn("⏮", "Segmento anterior", goSegPrev),
+    btnPrev,
+    playBtn,
+    btnNext,
+    mkBtn("⏭", "Próximo segmento", goSegNext),
+    slider, stepLabel, speedSel,
+  );
+
+  // ── Legenda ───────────────────────────────────────────────────────────────
+  const legenda = document.createElement("div");
+  legenda.style.cssText = `
+    flex-shrink:0;width:${LEGENDA_W}px;
+    display:flex;flex-direction:column;gap:0;
+    background:var(--theme-background-alt);
+    border:1px solid var(--theme-foreground-faintest);
+    border-radius:8px;padding:8px 10px 8px;`;
+
+  const lblSeg = document.createElement("div");
+  lblSeg.style.cssText = "font-size:.65rem;font-weight:700;color:var(--theme-foreground-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;";
+  lblSeg.textContent = mapaFinalizado ? "Segmentos" : "Trajetória";
+  legenda.append(lblSeg);
+
+  // Linhas coloridas por objetivo + segmento de retorno
+  const mkSegRow = (cor, label, num) => {
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;align-items:center;gap:6px;margin-bottom:3px;";
+    if (num != null) {
+      const badge = document.createElement("div");
+      badge.style.cssText = `width:16px;height:16px;border-radius:3px;background:${cor};flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700;color:#fff;`;
+      badge.textContent = num;
+      row.append(badge);
+    } else {
+      const linha = document.createElement("div");
+      linha.style.cssText = `width:22px;height:3px;border-radius:2px;background:${cor};flex-shrink:0;`;
+      row.append(linha);
+    }
+    const lbl = document.createElement("span");
+    lbl.style.cssText = "font-size:.68rem;color:var(--theme-foreground-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100px;";
+    lbl.textContent = label; lbl.title = label;
+    row.append(lbl); return row;
+  };
+  if (mapaFinalizado) {
+    for (const [si, oc] of objCenters.entries()) {
+      const featID = allInterFeatures[oc.origIdx]?.properties?.objectiveID;
+      const obj = objetivos.find(o => o.objectiveID === featID);
+      legenda.append(mkObjLegendaRow(obj, si + 1, "100px"));
+    }
+    if (temRetorno) legenda.append(mkSegRow(COR_RETORNO, "Retorno ao início"));
+
+    const sepGhost = document.createElement("div");
+    sepGhost.style.cssText = "border-top:1px solid var(--theme-foreground-faintest);margin:4px 0;";
+    const rowGhost = document.createElement("div");
+    rowGhost.style.cssText = "display:flex;align-items:center;gap:6px;margin-bottom:3px;";
+    const linhaGhost = document.createElement("div");
+    linhaGhost.style.cssText = "width:22px;height:2px;border-radius:2px;background:#ccc;flex-shrink:0;";
+    const lblGhost = document.createElement("span");
+    lblGhost.style.cssText = "font-size:.68rem;color:var(--theme-foreground-muted);";
+    lblGhost.textContent = "Rota completa";
+    rowGhost.append(linhaGhost, lblGhost);
+    legenda.append(sepGhost, rowGhost);
+  } else {
+    legenda.append(mkSegRow(CORES_OBJ[0], "Trajetória"));
+  }
+
+  if (chkInicio.checked && personPoints.length) {
+    const sepIn = document.createElement("div");
+    sepIn.style.cssText = "border-top:1px solid var(--theme-foreground-faintest);margin:4px 0;";
+    const rowIn = document.createElement("div");
+    rowIn.style.cssText = "display:flex;align-items:center;gap:6px;";
+    const dotIn = document.createElement("div");
+    dotIn.style.cssText = "width:9px;height:9px;border-radius:50%;background:#222;flex-shrink:0;border:1.5px solid #fff;box-shadow:0 0 0 1px #222;";
+    const lblIn = document.createElement("span");
+    lblIn.style.cssText = "font-size:.68rem;color:var(--theme-foreground-muted);";
+    lblIn.textContent = "Ponto Inicial";
+    rowIn.append(dotIn, lblIn); legenda.append(sepIn, rowIn);
+  }
+
+  const sepHead = document.createElement("div");
+  sepHead.style.cssText = "border-top:1px solid var(--theme-foreground-faintest);margin:4px 0;";
+  const rowHead = document.createElement("div");
+  rowHead.style.cssText = "display:flex;align-items:center;gap:6px;";
+  const dotHead = document.createElement("div");
+  const initHeadCor = passos[0]?.cor ?? CORES_OBJ[0];
+  dotHead.style.cssText = `width:10px;height:10px;border-radius:50%;background:${initHeadCor};flex-shrink:0;border:2px solid var(--theme-background);box-shadow:0 0 0 1px ${initHeadCor};`;
+  const lblHead = document.createElement("span");
+  lblHead.style.cssText = "font-size:.68rem;color:var(--theme-foreground-muted);";
+  lblHead.textContent = "Posição atual";
+  rowHead.append(dotHead, lblHead); legenda.append(sepHead, rowHead);
+
+  // ── Montar ────────────────────────────────────────────────────────────────
+  const mapRow = document.createElement("div");
+  mapRow.style.cssText = "display:flex;align-items:flex-start;gap:8px;";
+  mapRow.append(mapDiv, legenda);
+
+  const wrapper = document.createElement("div");
+  wrapper.style.cssText = "display:flex;flex-direction:column;gap:0;";
+  wrapper.append(controls, mapRow);
+  replayContainer.append(wrapper);
+
+  drawStep(step);
+}
+
+// ── Replay de Trajetória — versão D3 ──────────────────────────────────────
+function renderizarReplayD3() { try { _renderizarReplayD3(); } catch(e) { console.error("renderizarReplayD3:", e); } }
+function _renderizarReplayD3() {
+  if (replayD3Timer) { clearInterval(replayD3Timer); replayD3Timer = null; }
+  replayD3Container.replaceChildren();
+
+  const { camadas, cols, rows, dadosLog } = giroState;
+  if (!camadas || cols === 0 || !dadosLog) {
+    const hint = document.createElement("div"); hint.className = "giro-hint";
+    hint.textContent = "Selecione uma sessão para ver o replay de trajetória.";
+    replayD3Container.append(hint); return;
+  }
+
+  const CORES_OBJ  = ["#4a90d9","#e07b54","#5ba85b","#c9a227","#9b59b6","#2eaaa8","#e41a1c","#ff7f00"];
+  const COR_RETORNO = "#999";
+  const objetivos   = dadosLog.objectives ?? [];
+  const nObj        = objetivos.length;
+  const mapaFinalizado = dadosLog.results?.clearedMap === true;
+
+  // ── Helpers ──────────────────────────────────────────────────────────────
+  const getCamada  = name => camadas.find(c => c.layerName === name);
+  const polyToRect = f => {
+    const c = f.geometry.type === "Polygon" ? f.geometry.coordinates[0] : f.geometry.coordinates;
+    return { x1: c[0][0], y1: c[2][1], x2: c[2][0], y2: c[0][1], ...f.properties };
+  };
+  const allInterFeatures = getCamada("interactive_elements")?.geojson.features ?? [];
+  const personPoints = (getCamada("persons")?.geojson.features ?? []).map(f => ({
+    x: f.geometry.coordinates[0], y: f.geometry.coordinates[1],
+    direcaoIndex: f.properties?.direcaoIndex,
+  }));
+  const BASIC_TO_DEG = [270, 315, 0, 45, 90, 135, 180, 225];
+  const personArrows = personPoints.map(p => ({
+    x: p.x, y: p.y, heading: BASIC_TO_DEG[p.direcaoIndex] ?? 0,
+  }));
+
+  function inCross(px, py, cx, cy) {
+    const dx = Math.abs(px - cx), dy = Math.abs(py - cy);
+    return (dx <= 0.5 && dy <= 1.5) || (dy <= 0.5 && dx <= 1.5);
+  }
+
+  // ── Sequência de walks para cálculo de cutoffs ────────────────────────────
+  const allActions = [];
+  for (const [oi, obj] of objetivos.entries()) {
+    for (const a of obj.actions ?? []) {
+      if (a.position == null || a.actionType !== 0) continue;
+      allActions.push({ ...a, srcObjIdx: oi });
+    }
+  }
+  allActions.sort((a, b) => a.timestamp - b.timestamp);
+
+  const startPx = allActions.length > 0 ? Math.round(allActions[0].position.x) + 0.5 : 0;
+  const startPy = allActions.length > 0 ? Math.round(allActions[0].position.z) - rows + 0.5 : 0;
+
+  const featureStats = allInterFeatures.map((f, fi) => {
+    const r = polyToRect(f);
+    const cx = (r.x1 + r.x2) / 2, cy = (r.y1 + r.y2) / 2;
+    let hits = 0, inVisit = false, firstExitT = null, lastInCrossT = null, visitEnded = false;
+    for (const a of allActions) {
+      const px = Math.round(a.position.x) + 0.5;
+      const py = Math.round(a.position.z) - rows + 0.5;
+      const inC = inCross(px, py, cx, cy);
+      if (inC) hits++;
+      if (!visitEnded) {
+        if (inC) { inVisit = true; lastInCrossT = a.timestamp; }
+        else if (inVisit) { firstExitT = lastInCrossT; visitEnded = true; }
+      }
+    }
+    if (inVisit && !visitEnded) firstExitT = lastInCrossT;
+    return { cx, cy, origIdx: fi, hits, lastInCrossT: firstExitT };
+  });
+
+  const visited   = featureStats.filter(f => f.hits > 0).sort((a, b) => b.hits - a.hits);
+  const unvisited = featureStats.filter(f => f.hits === 0);
+  const objCenters = [...visited, ...unvisited].slice(0, nObj)
+    .sort((a, b) =>
+      (Math.abs(a.cx - startPx) + Math.abs(a.cy - startPy)) -
+      (Math.abs(b.cx - startPx) + Math.abs(b.cy - startPy))
+    );
+
+  const cutoffs     = objCenters.slice(0, nObj - 1).map(c => c.lastInCrossT ?? Infinity);
+  const lastObjEndTime = objetivos.reduce((maxT, obj) => Math.max(maxT, obj.endTime ?? 0), 0);
+  const returnCutoff = nObj > 0 && objCenters[nObj - 1]
+    ? (objCenters[nObj - 1].lastInCrossT ?? (mapaFinalizado && lastObjEndTime > 0 ? lastObjEndTime : Infinity))
+    : Infinity;
+
+  // ── Construção de passos ──────────────────────────────────────────────────
+  const allEventsRaw = [];
+  for (const [, obj] of objetivos.entries()) {
+    for (const a of obj.actions ?? []) {
+      if (a.position == null) continue;
+      allEventsRaw.push(a);
+    }
+  }
+  allEventsRaw.sort((a, b) => a.timestamp - b.timestamp);
+
+  // ── Extração bruta: TURN e WALK do log ───────────────────────────────────
+  const logBruto = allEventsRaw.filter(a => a.actionType === 0 || a.actionType === 1);
+  console.group(`[LOG BRUTO] ${logBruto.length} ações (TURN=1, WALK=0)`);
+  logBruto.forEach((a, i) => {
+    const tipo = a.actionType === 1 ? "TURN" : "WALK";
+    const dir  = a.actionType === 1 ? ` dir=${a.direction}` : "";
+    console.log(`#${String(i).padStart(2,"0")} ${tipo}${dir}  x=${a.position.x} z=${a.position.z}  t=${a.timestamp.toFixed(2)}`);
+  });
+  console.groupEnd();
+
+  // ── Verificação de consistência de movimentação ──────────────────────────
+  {
+    const walks = logBruto.filter(a => a.actionType === 0);
+    const problemas = [];
+    for (let i = 1; i < walks.length; i++) {
+      const prev = walks[i - 1], curr = walks[i];
+      const px = Math.round(prev.position.x), pz = Math.round(prev.position.z);
+      const cx = Math.round(curr.position.x), cz = Math.round(curr.position.z);
+      const dx = cx - px, dz = cz - pz;
+      const manhattan = Math.abs(dx) + Math.abs(dz);
+      // posição fracionária no log bruto (antes do round)
+      const fracX = Math.abs(curr.position.x - Math.round(curr.position.x));
+      const fracZ = Math.abs(curr.position.z - Math.round(curr.position.z));
+      const isFrac = fracX > 0.01 || fracZ > 0.01;
+      let tipo = null;
+      if (manhattan === 0)      tipo = "DUPLICATA";
+      else if (manhattan > 1)   tipo = `SALTO(${manhattan})`;
+      else if (Math.abs(dx) === 1 && Math.abs(dz) === 1) tipo = "DIAGONAL";
+      if (tipo || isFrac) {
+        problemas.push({ i, tipo: tipo ?? "FRACIONÁRIA", dx, dz,
+          prev: `(${prev.position.x},${prev.position.z})`,
+          curr: `(${curr.position.x},${curr.position.z})`,
+          dt: (curr.timestamp - prev.timestamp).toFixed(3) });
+      }
+    }
+    if (problemas.length === 0) {
+      console.log("[CONSISTÊNCIA] ✓ Todos os WALKs são ortogonais de 1 tile.");
+    } else {
+      console.group(`[CONSISTÊNCIA] ⚠ ${problemas.length} inconsistências detectadas`);
+      problemas.forEach(p =>
+        console.log(`walk#${p.i} ${p.tipo}  dx=${p.dx} dz=${p.dz}  prev=${p.prev} curr=${p.curr}  Δt=${p.dt}s`));
+      console.groupEnd();
+    }
+  }
+
+  const passos = [];
+  const startX = personArrows.length > 0 ? personArrows[0].x : null;
+  const startY = personArrows.length > 0 ? personArrows[0].y : null;
+  let currentH = personArrows[0]?.heading ?? 0; // heading acumulado — atualizado a cada turn
+
+  let ei = 0;
+  while (ei < allEventsRaw.length) {
+    const a = allEventsRaw[ei];
+    if (a.actionType === 0) {
+      let segIdx = 0;
+      for (let i = 0; i < cutoffs.length; i++) { if (a.timestamp > cutoffs[i]) segIdx = i + 1; }
+      const isReturn = segIdx === nObj - 1 && a.timestamp > returnCutoff;
+      const cor = mapaFinalizado
+        ? (isReturn ? COR_RETORNO : CORES_OBJ[segIdx % CORES_OBJ.length]) : CORES_OBJ[0];
+      const nx = Math.round(a.position.x) + 0.5;
+      const ny = Math.round(a.position.z) - rows + 0.5;
+      const noWalkYet = passos.filter(p => !p.isTurn).length === 0;
+      if (noWalkYet && startX !== null &&
+          Math.abs(nx - startX) < 0.01 && Math.abs(ny - startY) < 0.01) { ei++; continue; }
+      const prevP = passos[passos.length - 1];
+      if (!prevP || prevP.x !== nx || prevP.y !== ny) {
+        passos.push({ x: nx, y: ny, cor, objIdx: segIdx, isTurn: false });
+      }
+      ei++;
+    } else if (a.actionType === 1) {
+      const dir = a.direction;
+      const px = a.position?.x ?? 0, pz = a.position?.z ?? 0;
+      let count = 0;
+      while (
+        ei + count < allEventsRaw.length &&
+        allEventsRaw[ei + count].actionType === 1 &&
+        allEventsRaw[ei + count].direction === dir &&
+        Math.abs((allEventsRaw[ei + count].position?.x ?? 0) - px) < 0.1 &&
+        Math.abs((allEventsRaw[ei + count].position?.z ?? 0) - pz) < 0.1
+      ) count++;
+      const prev = passos[passos.length - 1];
+      const baseX = prev ? prev.x : (startX ?? Math.round(px) + 0.5);
+      const baseY = prev ? prev.y : (startY ?? Math.round(pz) - rows + 0.5);
+      const baseCor  = prev ? prev.cor    : CORES_OBJ[0];
+      const baseObjI = prev ? prev.objIdx : 0;
+      // Acumula heading para todos os turns do grupo e cria UM único passo
+      for (let k = 0; k < count; k++) {
+        currentH = (currentH + (dir === 4 ? 90 : -90) + 360) % 360;
+      }
+      passos.push({
+        x: baseX, y: baseY, cor: baseCor, objIdx: baseObjI,
+        isTurn: true, direction: dir, headingAfter: currentH,
+      });
+      ei += count;
+    } else { ei++; }
+  }
+
+  const hasRealReturn = mapaFinalizado && passos.some(p => p.cor === COR_RETORNO);
+  if (mapaFinalizado && !hasRealReturn && passos.length > 0 && nObj > 0 && objCenters[nObj - 1]) {
+    const { cx, cy } = objCenters[nObj - 1];
+    const dest = startX !== null ? { x: startX, y: startY } : passos[0];
+    passos.push({ x: cx, y: cy, cor: COR_RETORNO, objIdx: nObj - 1 });
+    if (Math.abs(cx - dest.x) > 0.5 || Math.abs(cy - dest.y) > 0.5)
+      passos.push({ x: dest.x, y: dest.y, cor: COR_RETORNO, objIdx: nObj - 1 });
+  }
+  const temRetorno = mapaFinalizado && passos.some(p => p.cor === COR_RETORNO);
+  // Último passo de retorno até spawn pode estar ausente do log (sessão fecha no chegada).
+  // Se o último WALK de retorno está a 1 tile de spawn, adiciona passo sintético de conclusão.
+  if (temRetorno && startX !== null) {
+    const lastRW = [...passos].reverse().find(p => p.cor === COR_RETORNO && !p.isTurn);
+    if (lastRW) {
+      const adx = Math.abs(startX - lastRW.x);
+      const ady = Math.abs(startY - lastRW.y);
+      if (adx + ady === 1) {
+        passos.push({ x: startX, y: startY, cor: COR_RETORNO, objIdx: nObj - 1, isTurn: false });
+      }
+    }
+  }
+
+  const segmentEnds = [];
+  for (let i = 1; i < passos.length; i++) {
+    if (passos[i].cor !== passos[i - 1].cor) segmentEnds.push(i);
+  }
+  segmentEnds.push(passos.length);
+
+  if (logBruto.length === 0) {
+    const hint = document.createElement("div"); hint.className = "giro-hint";
+    hint.textContent = "Nenhum dado de movimentação nessa sessão.";
+    replayD3Container.append(hint); return;
+  }
+
+  const lineAnchor = startX !== null
+    ? { x: startX, y: startY, cor: passos[0]?.cor ?? CORES_OBJ[0], objIdx: 0 } : null;
+  const effectiveInitialH = personArrows[0]?.heading ?? 0; // heading puro do XML
+  // Posição e orientação de spawn (do XML) — usada na seta inicial e preservada para uso posterior
+  const setaInicial = startX !== null
+    ? { x: startX, y: startY, heading: effectiveInitialH }
+    : null;
+
+  // Diagnóstico: compara setaInicial (XML) com o primeiro WALK (Unity log)
+  { const fw = logBruto.find(a => a.actionType === 0);
+    if (setaInicial && fw) {
+      const fx = Math.round(fw.position.x) + 0.5, fy = Math.round(fw.position.z) - rows + 0.5;
+      console.log(`[SPAWN] XML=(${setaInicial.x},${setaInicial.y})  firstWALK=(${fx},${fy})  Δ=(${(fx-setaInicial.x).toFixed(2)},${(fy-setaInicial.y).toFixed(2)})`);
+    }
+  }
+
+  // ── Debug: dump da sequência de passos ───────────────────────────────────
+  console.group(`[ReplayD3] passos (${passos.length}) — effectiveInitialH=${effectiveInitialH}`);
+  passos.forEach((p, i) => {
+    const idx  = String(i).padStart(2, "0");
+    const tipo = p.isTurn ? "TURN" : "WALK";
+    const dir  = p.isTurn ? ` dir=${p.direction}` : "        ";
+    const hAfter = p.isTurn ? ` H→${p.headingAfter}°` : "";
+    console.log(`#${idx} ${tipo}${dir}${hAfter}  pos=(${p.x.toFixed(1)}, ${p.y.toFixed(1)})  cor=${p.cor}`);
+  });
+  console.groupEnd();
+
+  // Detecta posições onde o jogador ficou parado (mesma tile por ≥ STOP_THRESHOLD_S s)
+  const STOP_THRESHOLD_S = 2;
+  const paradas = [];
+  { let i = 0;
+    while (i < logBruto.length) {
+      const a = logBruto[i];
+      const tx = Math.round(a.position.x), tz = Math.round(a.position.z);
+      let j = i + 1;
+      while (j < logBruto.length &&
+             Math.round(logBruto[j].position.x) === tx &&
+             Math.round(logBruto[j].position.z) === tz) j++;
+      const dt = logBruto[j - 1].timestamp - a.timestamp;
+      if (dt >= STOP_THRESHOLD_S)
+        paradas.push({ geoX: tx + 0.5, geoY: tz - rows + 0.5, stepStart: i + 1, stepEnd: j });
+      i = j;
+    }
+  }
+
+  // ── Camadas estáticas ─────────────────────────────────────────────────────
+  const floorRects  = (getCamada("floor")?.geojson.features ?? []).map(polyToRect);
+  const doorRects   = (getCamada("door_and_windows")?.geojson.features ?? []).map(polyToRect);
+  const wallFeature = getCamada("walls")?.geojson.features[0];
+  const wallEdges   = (wallFeature?.geometry.coordinates ?? []).map(([p1, p2]) => ({
+    x1: p1[0], y1: p1[1], x2: p2[0], y2: p2[1],
+  }));
+  const interRects = chkObjetos.checked && mapaFinalizado
+    ? objCenters.map((c, si) => {
+        const r = polyToRect(allInterFeatures[c.origIdx]);
+        return { ...r, cx: c.cx, cy: c.cy, idx: si + 1 };
+      })
+    : [];
+  const furnRects = chkMoveis.checked ? [
+    ...(getCamada("furniture")?.geojson.features  ?? []),
+    ...(getCamada("eletronics")?.geojson.features ?? []),
+    ...(getCamada("utensils")?.geojson.features   ?? []),
+  ].map(polyToRect) : [];
+
+  // ── Colisões: snap idêntico ao quadro Colisão + janela de proximidade ────
+  {
+    const snapFeats = [
+      ...(getCamada("door_and_windows")?.geojson.features    ?? []),
+      ...(getCamada("furniture")?.geojson.features            ?? []),
+      ...(getCamada("eletronics")?.geojson.features           ?? []),
+      ...(getCamada("utensils")?.geojson.features             ?? []),
+      ...(getCamada("interactive_elements")?.geojson.features ?? []),
+    ].map(f => {
+      const cs = f.geometry.type === "Polygon" ? f.geometry.coordinates[0] : f.geometry.coordinates;
+      const xs = cs.map(p => p[0]), ys = cs.map(p => p[1]);
+      const nameStr = Object.values(f.properties ?? {}).filter(v => typeof v === "string").join(" ").toLowerCase();
+      return { x1: Math.min(...xs), y1: Math.min(...ys), x2: Math.max(...xs), y2: Math.max(...ys), nameStr };
+    });
+    const wallNm = "wall brick stone fence barrier";
+    const MAX_SNAP = 2.0;
+    function colNearRect(px, py, r) {
+      const cx = Math.max(r.x1, Math.min(r.x2, px)), cy = Math.max(r.y1, Math.min(r.y2, py));
+      return [cx, cy, Math.hypot(px-cx, py-cy)];
+    }
+    function colNearSeg(px, py, x1, y1, x2, y2) {
+      const dx=x2-x1, dy=y2-y1, l2=dx*dx+dy*dy;
+      if (!l2) return [x1, y1, Math.hypot(px-x1, py-y1)];
+      const t=Math.max(0,Math.min(1,((px-x1)*dx+(py-y1)*dy)/l2));
+      const nx=x1+t*dx, ny=y1+t*dy; return [nx, ny, Math.hypot(px-nx, py-ny)];
+    }
+    function colSnapPos(px, py, objectID) {
+      const objLow=objectID.toLowerCase(), objToks=objLow.split(/[_\-\s]+/).filter(t=>t.length>2);
+      const pen = nm => { const ts=nm.split(/\s+/).filter(t=>t.length>2); return objToks.some(t=>nm.includes(t))||ts.some(t=>objLow.includes(t))?0:1000; };
+      let bestEff=Infinity, bestGeo=Infinity, bestX=px, bestY=py;
+      for (const r of snapFeats) { const [cx,cy,g]=colNearRect(px,py,r); const e=g+pen(r.nameStr); if(e<bestEff){bestEff=e;bestGeo=g;bestX=cx;bestY=cy;} }
+      for (const e of wallEdges)  { const [nx,ny,g]=colNearSeg(px,py,e.x1,e.y1,e.x2,e.y2); const ef=g+pen(wallNm); if(ef<bestEff){bestEff=ef;bestGeo=g;bestX=nx;bestY=ny;} }
+      if (bestGeo <= MAX_SNAP) { px=bestX; py=bestY; }
+      return { px, py };
+    }
+    var colisoes = [];
+    for (const obj of objetivos) {
+      for (const c of obj.collisions ?? []) {
+        if (c.position == null) continue;
+        let { px, py } = colSnapPos(c.position.x, c.position.z - rows, c.objectID ?? "");
+        colisoes.push({ geoX: px, geoY: py, objectID: c.objectID });
+      }
+    }
+    const NEAR_TILES = 1.5;
+    for (const c of colisoes) {
+      c.firstNearStep = -1; c.lastNearStep = -1;
+      for (let i = 0; i < passos.length; i++) {
+        const d = Math.abs(passos[i].x - c.geoX) + Math.abs(passos[i].y - c.geoY);
+        if (d <= NEAR_TILES) {
+          if (c.firstNearStep < 0) c.firstNearStep = i + 1;
+          c.lastNearStep = i + 1;
+        } else if (c.firstNearStep >= 0) { break; } // fim da primeira janela contígua
+      }
+    }
+  }
+
+  // ── Dimensões e escalas ───────────────────────────────────────────────────
+  const LEGENDA_W = 140;
+  const W  = (replayD3Container.getBoundingClientRect().width || 500) - LEGENDA_W - 16;
+  const sc = Math.min((W - 8) / cols, 480 / rows);
+  const W2 = Math.round(cols * sc);
+  const H2 = Math.round(rows * sc);
+
+  const xSc = d3.scaleLinear().domain([0, cols]).range([0, W2]);
+  const ySc = d3.scaleLinear().domain([-rows, 0]).range([H2, 0]);
+
+  // Aplica x,y,width,height a partir de {x1,y1,x2,y2} em GeoJSON
+  const rAttrs = sel => sel
+    .attr("x",      d => xSc(d.x1))
+    .attr("y",      d => ySc(d.y2))          // y2 = menos negativo = topo
+    .attr("width",  d => xSc(d.x2) - xSc(d.x1))
+    .attr("height", d => ySc(d.y1) - ySc(d.y2)); // y1 = mais negativo = base
+
+  // ── Cria SVG com grupos em ordem de z ────────────────────────────────────
+  const svg    = d3.create("svg").attr("width", W2).attr("height", H2).style("overflow","visible").style("display","block");
+  const gFloor    = svg.append("g");
+  const gDoors    = svg.append("g");
+  const gGhost    = svg.append("g");
+  const gTrail    = svg.append("g");
+  const gFurn     = svg.append("g");
+  const gWalls    = svg.append("g");
+  const gInter    = svg.append("g");
+  const gColFixed = svg.append("g"); // círculos fixos de colisão (PIN já passou)
+  const gArrow    = svg.append("g");
+  const gColPulse = svg.append("g"); // anéis pulsantes (PIN próximo)
+  const gStop  = svg.append("g"); // indicador de parada — PIN piscando
+
+  // CSS para efeito de PIN piscando (injetado uma vez por sessão de página)
+  { const styleId = "ena-stop-pin-style";
+    if (!document.getElementById(styleId)) {
+      const st = document.createElement("style"); st.id = styleId;
+      st.textContent = "@keyframes ena-pin-blink{0%,100%{opacity:1}50%{opacity:0.1}} .ena-pin-blink{animation:ena-pin-blink .85s ease-in-out infinite;}";
+      document.head.append(st);
+    }
+  }
+  const stopPin = gStop.append("circle")
+    .attr("r", 0)
+    .attr("fill", "#e07b54").attr("fill-opacity", 0.85)
+    .attr("stroke", "#a84400").attr("stroke-width", 1.5)
+    .style("display", "none");
+
+  // Piso
+  rAttrs(gFloor.selectAll("rect").data(floorRects).join("rect"))
+    .attr("fill", "none")
+    .attr("stroke", d => d.areaInterna ? "#cccccc" : "#e0e0e0")
+    .attr("stroke-width", 0.5);
+
+  // Portas / janelas
+  rAttrs(gDoors.selectAll("rect").data(doorRects).join("rect"))
+    .attr("fill", "#f0f0f0").attr("stroke", "none");
+
+  // Ghost trail (walk-only + âncora, apenas sessões finalizadas)
+  if (mapaFinalizado) {
+    const ghostWalk = passos.filter(p => !p.isTurn);
+    const ghostAll  = lineAnchor ? [lineAnchor, ...ghostWalk] : ghostWalk;
+    const ghostSegs = [];
+    for (let i = 1; i < ghostAll.length; i++) {
+      ghostSegs.push({ x1: ghostAll[i-1].x, y1: ghostAll[i-1].y,
+                       x2: ghostAll[i].x,   y2: ghostAll[i].y,   cor: ghostAll[i].cor });
+    }
+    // Agrupa segmentos consecutivos de mesma cor em paths — evita círculos nos extremos intermediários
+    const ghostGroups = [];
+    for (const seg of ghostSegs) {
+      if (!ghostGroups.length || ghostGroups[ghostGroups.length-1].cor !== seg.cor) {
+        ghostGroups.push({ cor: seg.cor, pts: [{ x: seg.x1, y: seg.y1 }, { x: seg.x2, y: seg.y2 }] });
+      } else {
+        ghostGroups[ghostGroups.length-1].pts.push({ x: seg.x2, y: seg.y2 });
+      }
+    }
+    gGhost.selectAll("path").data(ghostGroups).join("path")
+      .attr("d", g => "M" + g.pts.map(p => `${xSc(p.x)},${ySc(p.y)}`).join("L"))
+      .attr("stroke", g => g.cor).attr("fill", "none").attr("stroke-opacity", 0.2)
+      .attr("stroke-width", Math.max(sc * 0.49, 6.12))
+      .attr("stroke-linecap", "round").attr("stroke-linejoin", "round");
+  }
+
+  // Móveis
+  if (furnRects.length) {
+    rAttrs(gFurn.selectAll("rect").data(furnRects).join("rect"))
+      .attr("fill","#b0b0b0").attr("fill-opacity",0.35)
+      .attr("stroke","#888").attr("stroke-width",0.7);
+  }
+
+  // Paredes
+  gWalls.selectAll("line").data(wallEdges).join("line")
+    .attr("x1", d => xSc(d.x1)).attr("y1", d => ySc(d.y1))
+    .attr("x2", d => xSc(d.x2)).attr("y2", d => ySc(d.y2))
+    .attr("stroke","#3a3a3a").attr("stroke-width", Math.max(1, sc * 0.07));
+
+  // Elementos interativos (objetivos)
+  if (interRects.length) {
+    const irS = interRects.map(r => {
+      const mx = (r.x1+r.x2)/2, my = (r.y1+r.y2)/2;
+      const hw = (r.x2-r.x1)*0.25, hh = (r.y2-r.y1)*0.25;
+      return { ...r, sx1: mx-hw, sx2: mx+hw, sy1: my-hh, sy2: my+hh };
+    });
+    gInter.selectAll("rect").data(irS).join("rect")
+      .attr("x", d => xSc(d.sx1)).attr("y", d => ySc(d.sy2))
+      .attr("width", d => xSc(d.sx2)-xSc(d.sx1)).attr("height", d => ySc(d.sy1)-ySc(d.sy2))
+      .attr("fill","none").attr("stroke","#5ba85b").attr("stroke-width",1.2);
+    gInter.selectAll("text").data(interRects).join("text")
+      .attr("x", d => xSc(d.cx)).attr("y", d => ySc(d.cy))
+      .attr("text-anchor","middle").attr("dominant-baseline","central")
+      .attr("font-size", Math.max(5, sc*0.25)).attr("fill","#2d6a2d").attr("font-weight","bold")
+      .text(d => String(d.idx));
+  }
+
+  // Seta do jogador
+  const ar = Math.max(5, Math.min(sc * 0.45, 12));
+  const arD = `M 0,${-ar*1.4} L ${ar*0.8},${ar*0.9} L 0,${ar*0.3} L ${-ar*0.8},${ar*0.9} Z`;
+  const arrowEl = personArrows.length
+    ? gArrow.append("path").attr("d", arD).attr("fill","#222").attr("stroke","#fff").attr("stroke-width",1.5)
+    : null;
+
+  // CSS de pulsação de colisão (injetado uma vez)
+  { const styleId = "ena-col-pulse-style";
+    if (!document.getElementById(styleId)) {
+      const st = document.createElement("style"); st.id = styleId;
+      st.textContent =
+        "@keyframes ena-col-pulse{0%{transform:scale(1);stroke-opacity:.85}100%{transform:scale(3.2);stroke-opacity:0}}" +
+        ".ena-col-pulse{animation:ena-col-pulse 1.4s ease-out infinite;transform-box:fill-box;transform-origin:center;}";
+      document.head.append(st);
+    }
+  }
+  const colR = Math.max(4, sc * 0.11);
+  const colFixedEls = colisoes.map(c =>
+    gColFixed.append("circle")
+      .attr("cx", xSc(c.geoX)).attr("cy", ySc(c.geoY)).attr("r", colR)
+      .attr("fill", "none").attr("stroke", "#e53935").attr("stroke-width", 1.8)
+      .style("display", "none")
+  );
+  const colPulseEls = colisoes.map(c =>
+    gColPulse.append("circle")
+      .attr("cx", xSc(c.geoX)).attr("cy", ySc(c.geoY)).attr("r", colR * 1.2)
+      .attr("fill", "none").attr("stroke", "#e53935").attr("stroke-width", 2.2)
+      .style("display", "none")
+  );
+
+  // ── Containers DOM ────────────────────────────────────────────────────────
+  const mapDiv    = document.createElement("div");
+  const stepLabel = document.createElement("span");
+  stepLabel.style.cssText = "font-size:.7rem;color:var(--theme-foreground-muted);min-width:72px;text-align:center;font-variant-numeric:tabular-nums;flex-shrink:0;";
+
+  mapDiv.append(svg.node());
+
+  // ── drawStep — usa passos[], uma entrada por vez ─────────────────────────
+  function drawStep(s) {
+    if (s === 0) { drawInicial(); return; }
+
+    const trail = passos.slice(0, s);
+    const head  = trail.length > 0 ? trail[trail.length - 1] : null;
+
+    // Trail: somente passos de caminhada, segmentos ortogonais de 1 tile
+    const walkTrail = trail.filter(p => !p.isTurn);
+    const lineSegs  = [];
+    // Segmento do spawn (XML) até o primeiro WALK
+    if (setaInicial && walkTrail.length > 0) {
+      const adx = Math.abs(walkTrail[0].x - setaInicial.x);
+      const ady = Math.abs(walkTrail[0].y - setaInicial.y);
+      if (adx + ady === 1) {
+        lineSegs.push({ x1: setaInicial.x, y1: setaInicial.y,
+                        x2: walkTrail[0].x, y2: walkTrail[0].y, cor: walkTrail[0].cor });
+      }
+    }
+    for (let i = 1; i < walkTrail.length; i++) {
+      const adx = Math.abs(walkTrail[i].x - walkTrail[i-1].x);
+      const ady = Math.abs(walkTrail[i].y - walkTrail[i-1].y);
+      // Segmentos de retorno (cor cinza) passam pelo filtro sem restrição de 1 tile
+      // para que o trecho sintético (último obj → spawn) seja sempre desenhado.
+      const isReturn = walkTrail[i].cor === COR_RETORNO && walkTrail[i-1].cor === COR_RETORNO;
+      if (isReturn || adx + ady === 1) {
+        lineSegs.push({ x1: walkTrail[i-1].x, y1: walkTrail[i-1].y,
+                        x2: walkTrail[i].x,   y2: walkTrail[i].y, cor: walkTrail[i].cor });
+      }
+    }
+    // Segmento terminal: último WALK de retorno → spawn (real: 1 tile; sem efeito se já lá)
+    if (setaInicial && temRetorno && walkTrail.length > 0) {
+      const last = walkTrail[walkTrail.length - 1];
+      if (last.cor === COR_RETORNO) {
+        const adx = Math.abs(setaInicial.x - last.x);
+        const ady = Math.abs(setaInicial.y - last.y);
+        if (adx + ady === 1) {
+          lineSegs.push({ x1: last.x, y1: last.y,
+                          x2: setaInicial.x, y2: setaInicial.y, cor: COR_RETORNO });
+        }
+      }
+    }
+    const trailGroups = [];
+    for (const seg of lineSegs) {
+      if (!trailGroups.length || trailGroups[trailGroups.length-1].cor !== seg.cor) {
+        trailGroups.push({ cor: seg.cor, pts: [{ x: seg.x1, y: seg.y1 }, { x: seg.x2, y: seg.y2 }] });
+      } else {
+        trailGroups[trailGroups.length-1].pts.push({ x: seg.x2, y: seg.y2 });
+      }
+    }
+    gTrail.selectAll("path").data(trailGroups, (_, i) => i).join("path")
+      .attr("d", g => "M" + g.pts.map(p => `${xSc(p.x)},${ySc(p.y)}`).join("L"))
+      .attr("stroke", g => g.cor).attr("fill", "none")
+      .attr("stroke-width", Math.max(sc * 0.255, 2))
+      .attr("stroke-linecap", "round").attr("stroke-linejoin", "round");
+
+    // Seta: posição = último passo; heading = headingAfter do último turn
+    if (arrowEl) {
+      const pos      = head ?? setaInicial;
+      const lastTurn = trail.filter(p => p.isTurn).at(-1);
+      const H        = lastTurn?.headingAfter ?? effectiveInitialH;
+      if (pos) arrowEl.attr("transform", `translate(${xSc(pos.x)},${ySc(pos.y)}) rotate(${H})`);
+    }
+
+    // PIN piscando (paradas calculadas sobre logBruto — desativado por ora)
+    stopPin.style("display", "none").classed("ena-pin-blink", false);
+
+    // Colisões: anel pulsante na primeira janela de proximidade, fixo após sair
+    colisoes.forEach((c, ci) => {
+      if (c.firstNearStep < 0 || s < c.firstNearStep) {
+        // ainda não chegou
+        colFixedEls[ci].style("display", "none");
+        colPulseEls[ci].style("display", "none").classed("ena-col-pulse", false);
+      } else if (s <= c.lastNearStep) {
+        // dentro da janela de proximidade original — fixo + pulsante
+        colFixedEls[ci].style("display", null);
+        colPulseEls[ci].style("display", null).classed("ena-col-pulse", true);
+      } else {
+        // já passou — só círculo fixo
+        colFixedEls[ci].style("display", null);
+        colPulseEls[ci].style("display", "none").classed("ena-col-pulse", false);
+      }
+    });
+
+    stepLabel.textContent = `${s} / ${passos.length}`;
+    slider.value = s;
+  }
+
+  // ── Controles ─────────────────────────────────────────────────────────────
+  // Pontos de troca de segmento (para ⏮⏭), calculados sobre passos
+  const segEnds = [];
+  for (let i = 1; i < passos.length; i++) {
+    if (passos[i].cor !== passos[i - 1].cor) segEnds.push(i);
+  }
+  segEnds.push(passos.length);
+
+  let step = 0, playing = false, speed = 50;
+
+  // Pinta o estado inicial: seta na posição de spawn do XML, trail ativo vazio
+  function drawInicial() {
+    gTrail.selectAll("path").data([]).join("path");
+    stopPin.style("display", "none").classed("ena-pin-blink", false);
+    colisoes.forEach((_, ci) => {
+      colFixedEls[ci].style("display", "none");
+      colPulseEls[ci].style("display", "none").classed("ena-col-pulse", false);
+    });
+    if (arrowEl && setaInicial) {
+      arrowEl.attr("transform",
+        `translate(${xSc(setaInicial.x)},${ySc(setaInicial.y)}) rotate(${setaInicial.heading})`);
+    }
+    stepLabel.textContent = "Início";
+    slider.value = 0;
+  }
+
+  const slider = document.createElement("input");
+  slider.type = "range"; slider.min = 0; slider.max = passos.length; slider.value = step;
+  slider.style.cssText = "flex:1;accent-color:#4a90d9;min-width:80px;cursor:pointer;";
+  slider.addEventListener("input", () => { step = +slider.value; drawStep(step); });
+
+  const playBtn = document.createElement("button");
+  playBtn.style.cssText = "padding:.22rem .6rem;border-radius:4px;border:1px solid var(--theme-foreground-faint);background:transparent;color:var(--theme-foreground);cursor:pointer;font-size:.85rem;font-weight:700;flex-shrink:0;";
+
+  function stopPlay() {
+    if (replayD3Timer) { clearInterval(replayD3Timer); replayD3Timer = null; }
+    playing = false; playBtn.textContent = "▶";
+  }
+  function startPlay() {
+    playing = true; playBtn.textContent = "⏸";
+    if (step >= passos.length) step = 0;
+    replayD3Timer = setInterval(() => { step++; drawStep(step); if (step >= passos.length) stopPlay(); }, speed);
+  }
+  playBtn.textContent = "▶";
+  playBtn.addEventListener("click", () => playing ? stopPlay() : startPlay());
+
+  const mkBtn = (txt, title, fn) => {
+    const b = document.createElement("button"); b.textContent = txt; b.title = title;
+    b.style.cssText = "padding:.22rem .5rem;border-radius:4px;border:1px solid var(--theme-foreground-faint);background:transparent;color:var(--theme-foreground);cursor:pointer;font-size:.8rem;flex-shrink:0;";
+    b.addEventListener("click", fn); return b;
+  };
+  const speedSel = document.createElement("select");
+  speedSel.style.cssText = "font-size:.72rem;border:1px solid var(--theme-foreground-faint);border-radius:4px;background:var(--theme-background);color:var(--theme-foreground);padding:.1rem .3rem;cursor:pointer;flex-shrink:0;";
+  for (const [lbl, ms] of [["Lento",120],["Normal",50],["Rápido",20],["Turbo",5]]) {
+    const op = document.createElement("option"); op.value = ms; op.textContent = lbl;
+    if (ms === speed) op.selected = true; speedSel.append(op);
+  }
+  speedSel.addEventListener("change", () => { speed = +speedSel.value; if (playing) { stopPlay(); startPlay(); } });
+
+  const controls = document.createElement("div");
+  controls.style.cssText = "display:flex;align-items:center;gap:5px;margin-bottom:6px;flex-wrap:wrap;";
+  const btnPrev = mkBtn("◀","Passo anterior",()=>{ stopPlay(); if(step>0){step--;drawStep(step);} });
+  const btnNext = mkBtn("▷","Próximo passo", ()=>{ stopPlay(); if(step<passos.length){step++;drawStep(step);} });
+  const goSegPrev = () => { stopPlay(); const p=[...segEnds].reverse().find(e=>e<step); step=p??0; drawStep(step); };
+  const goSegNext = () => { stopPlay(); const n=segEnds.find(e=>e>step); step=n??passos.length; drawStep(step); };
+  controls.append(mkBtn("⏮","Seg. anterior",goSegPrev), btnPrev, playBtn, btnNext, mkBtn("⏭","Próx. segmento",goSegNext), slider, stepLabel, speedSel);
+
+  // ── Legenda ───────────────────────────────────────────────────────────────
+  const legenda = document.createElement("div");
+  legenda.style.cssText = `flex-shrink:0;width:${LEGENDA_W}px;display:flex;flex-direction:column;gap:0;background:var(--theme-background-alt);border:1px solid var(--theme-foreground-faintest);border-radius:8px;padding:8px 10px;`;
+  const lblSeg = document.createElement("div");
+  lblSeg.style.cssText = "font-size:.65rem;font-weight:700;color:var(--theme-foreground-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;";
+  lblSeg.textContent = mapaFinalizado ? "Segmentos" : "Trajetória";
+  legenda.append(lblSeg);
+  const mkSegRow = (cor, label, num) => {
+    const row=document.createElement("div"); row.style.cssText="display:flex;align-items:center;gap:6px;margin-bottom:3px;";
+    if (num != null) {
+      const badge=document.createElement("div");
+      badge.style.cssText=`width:16px;height:16px;border-radius:3px;background:${cor};flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700;color:#fff;`;
+      badge.textContent=num;
+      row.append(badge);
+    } else {
+      const ln=document.createElement("div"); ln.style.cssText=`width:22px;height:3px;border-radius:2px;background:${cor};flex-shrink:0;`;
+      row.append(ln);
+    }
+    const lb=document.createElement("span"); lb.style.cssText="font-size:.68rem;color:var(--theme-foreground-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100px;";
+    lb.textContent=label; lb.title=label; row.append(lb); return row;
+  };
+  if (mapaFinalizado) {
+    for (const [si, oc] of objCenters.entries()) {
+      const featID = allInterFeatures[oc.origIdx]?.properties?.objectiveID;
+      const obj = objetivos.find(o => o.objectiveID === featID);
+      legenda.append(mkObjLegendaRow(obj, si+1, "100px"));
+    }
+    if (temRetorno) legenda.append(mkSegRow(COR_RETORNO,"Retorno ao início"));
+    const sep=document.createElement("div"); sep.style.cssText="border-top:1px solid var(--theme-foreground-faintest);margin:4px 0;";
+    const rg=document.createElement("div"); rg.style.cssText="display:flex;align-items:center;gap:6px;margin-bottom:3px;";
+    const lg=document.createElement("div"); lg.style.cssText="width:22px;height:2px;border-radius:2px;background:#ccc;flex-shrink:0;";
+    const tg=document.createElement("span"); tg.style.cssText="font-size:.68rem;color:var(--theme-foreground-muted);"; tg.textContent="Rota completa";
+    rg.append(lg,tg); legenda.append(sep,rg);
+  } else { legenda.append(mkSegRow(CORES_OBJ[0],"Trajetória")); }
+
+  const sepH=document.createElement("div"); sepH.style.cssText="border-top:1px solid var(--theme-foreground-faintest);margin:4px 0;";
+  const rowH=document.createElement("div"); rowH.style.cssText="display:flex;align-items:center;gap:6px;";
+  const dotHead=document.createElement("div");
+  const initCor=passos[0]?.cor??CORES_OBJ[0];
+  dotHead.style.cssText=`width:10px;height:10px;border-radius:50%;background:${initCor};flex-shrink:0;border:2px solid var(--theme-background);box-shadow:0 0 0 1px ${initCor};`;
+  const lbH=document.createElement("span"); lbH.style.cssText="font-size:.68rem;color:var(--theme-foreground-muted);"; lbH.textContent="Posição atual";
+  rowH.append(dotHead,lbH); legenda.append(sepH,rowH);
+
+  // ── Montar ────────────────────────────────────────────────────────────────
+  const mapRow=document.createElement("div"); mapRow.style.cssText="display:flex;align-items:flex-start;gap:8px;";
+  mapRow.append(mapDiv,legenda);
+  const wrapper=document.createElement("div"); wrapper.style.cssText="display:flex;flex-direction:column;gap:0;";
+  wrapper.append(controls,mapRow);
+  replayD3Container.append(wrapper);
+
+  drawInicial(); // exibe apenas o ponto de spawn do XML; controles bloqueados até próxima fase
 }
 
 // Cache de camadas por id_mapa para não reprocessar o mesmo XML
@@ -1312,6 +2710,8 @@ async function carregarMapaGiros(id_log) {
     renderizarMapaGiros();
     renderizarHeatmap();
     renderizarColisao();
+    renderizarReplay();
+    renderizarReplayD3();
     renderizarLateralidade();
     renderizarComportamental();
   } catch (e) {
@@ -1330,6 +2730,12 @@ function ph(classe, icon, label) {
 }
 
 const phTrafego        = ph("ph-trafego",       "🗺️",  "Mapa de Tráfego e Giros");
+const replayContainer   = document.createElement("div");
+replayContainer.style.cssText = "min-height:180px";
+const replayD3Container = document.createElement("div");
+replayD3Container.style.cssText = "min-height:180px";
+let replayTimer   = null;
+let replayD3Timer = null;
 const heatmapContainer = document.createElement("div");
 heatmapContainer.style.cssText = "min-height:180px";
 const colisaoContainer = document.createElement("div");
@@ -1827,6 +3233,7 @@ const colEsquerda = html`<div class="col-esquerda">
 
       <div class="filtro-titulo">Camadas do Mapa</div>
       <div class="filtro-check">
+        <label>${chkInicio} <span class="filtro-icon">⬤</span> Ponto Inicial</label>
         <label>${chkObjetos}<span class="filtro-icon">◎</span> Objetivos da cena</label>
         <label>${chkMoveis} <span class="filtro-icon">▭</span> Móveis / objetos</label>
       </div>
@@ -1847,6 +3254,18 @@ const colEsquerda = html`<div class="col-esquerda">
 </div>`;
 
 const colCentro = html`<div class="col-centro">
+
+  <!-- Replay de Trajetória (Plot) -->
+  <div class="painel">
+    <div class="painel-titulo">Replay de Trajetória</div>
+    <div class="painel-corpo">${replayContainer}</div>
+  </div>
+
+  <!-- Replay de Trajetória (D3) -->
+  <div class="painel">
+    <div class="painel-titulo">Replay de Trajetória — D3</div>
+    <div class="painel-corpo">${replayD3Container}</div>
+  </div>
 
   <!-- Mapa de Giros -->
   <div class="painel">
