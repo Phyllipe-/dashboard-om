@@ -141,17 +141,19 @@ export function mapaParaGeoJSON({ cols, rows, layers }) {
       }
 
     } else if (layerName === "persons") {
-      const DIR_MAP = { "0.0": 2, "0.1": 6, "0.2": 4, "0.3": 0 };
+      // Tile index (inteiro) → Direction.Basic: 0=Up, 1=Right, 2=Down, 3=Left
+      const DIR_MAP = [2, 4, 6, 0];
       for (let i = 0; i < data.length; i++) {
         if (data[i] === "-1") continue;
         const x = i % cols, y = Math.floor(i / cols);
+        const tileIdx = Math.round(parseFloat(data[i]));
         features.push({
           type: "Feature",
           geometry: { type: "Point", coordinates: [x + 0.5, -(y + 0.5)] },
           properties: {
             layerName,
             nomeAmigavel: nomeAmigavel(layerName, data[i], "Personagem"),
-            direcaoIndex: DIR_MAP[data[i]] ?? 2,
+            direcaoIndex: DIR_MAP[tileIdx] ?? 2,
           },
         });
       }
