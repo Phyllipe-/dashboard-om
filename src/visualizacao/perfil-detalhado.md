@@ -137,15 +137,18 @@ const analises = todasAnalises[0] ?? {};
 // Por cada mapa: carregar logs, métricas e XML
 async function carregarXML(sessaoLog) {
   const caminhoXml = sessaoLog?.nome_arquivo_xml ?? null;
-  if (!caminhoXml) return null;
+  if (!caminhoXml) return { camadas: null, mapaRaw: null };
   try {
     const token  = sessionStorage.getItem("om_token");
     const partes = caminhoXml.replace(/^\//, "").split("/");
     const pasta  = partes[0], arquivo = partes.slice(1).join("/");
     const resp = await fetch(`http://127.0.0.1:5000/api/treinos/arquivos/${pasta}/${arquivo}?token=${token}`);
-    if (resp.ok) return mapaParaGeoJSON(parseMapaXML(await resp.text()));
+    if (resp.ok) {
+      const mapaRaw = parseMapaXML(await resp.text());
+      return { camadas: mapaParaGeoJSON(mapaRaw), mapaRaw };
+    }
   } catch(e) { console.warn("falha ao carregar XML:", e); }
-  return null;
+  return { camadas: null, mapaRaw: null };
 }
 
 // Estrutura por mapa: { nome, sessoesComLog, camadas, metricas, idLogRef }
@@ -168,12 +171,12 @@ const gruposPorMapa = await Promise.all(
       )),
     ]);
 
-    const camadas = await carregarXML(sessaoLogRef);
+    const { camadas, mapaRaw } = await carregarXML(sessaoLogRef);
     const sessoesComLog = sessoesComLogRaw
       .filter(s => s.dadosLog)
       .sort((a, b) => a.sessao.id_log - b.sessao.id_log);
 
-    return { nome, sessoesComLog, camadas, metricas: metricasGrupo, idLogRef: refSessao.id_log };
+    return { nome, sessoesComLog, camadas, mapaRaw, metricas: metricasGrupo, idLogRef: refSessao.id_log };
   })
 );
 
@@ -194,7 +197,6 @@ const TIPOS = [
   { key: "lateralidade",         label: "Lateralidade",   desc: "Preferência e padrão lateral de movimento" },
   { key: "trafego",              label: "Tráfego",         desc: "Frequência de passagem por cada célula do mapa" },
   { key: "giros",                label: "Giros",           desc: "Quantidade e direção das rotações realizadas" },
-  { key: "comparacao",           label: "Comparação",      desc: "Diferença em relação às sessões anteriores" },
 ];
 
 // ── Barra de cobertura ────────────────────────────────────────────────────────
@@ -253,7 +255,6 @@ for (const grupo of gruposPorMapa) {
   grid.append(
     col,
     makeCard("Giros por Sessão",         () => scl.length ? graficoGiros(scl, Plot)        : null, scl.length > 0),
-    makeCard("Comparação",               () => graficoComparacao(met, idLogRef, Plot),            met.some(m => m.metricas)),
     (() => { const c = makeCard("Giros por Sessão (Mapa)", () => scl.length ? graficoGirosTreemap(scl) : null, scl.length > 0); c.style.gridColumn = "span 3"; return c; })(),
   );
 }
@@ -270,63 +271,132 @@ function renderizarEvolucao(sessoesComMetricas) {
   }
 
   const COR_RANGE    = ["#4a90e2", "#5ba85b", "#e07b54"];
+  const METRICAS     = ["Precisão", "Objetivos", "Fluidez"];
+  const FIELD_MAP    = { "Precisão": "precisao", "Objetivos": "objetivos", "Fluidez": "fluidez" };
   const labelsDomain = comMetricas.map(a => `#${a.sessao.id_log}`);
-  const grafRows     = comMetricas.flatMap(a => {
-    const label = `#${a.sessao.id_log}`;
-    const m = a.metricas;
-    return [
-      { label, metrica: "Precisão",  valor: m.precisao  },
-      { label, metrica: "Objetivos", valor: m.objetivos },
-      { label, metrica: "Fluidez",   valor: m.fluidez   },
-    ];
+  const sessaoAtualLabel = `#${idLog}`;
+  const ultimaLabel  = labelsDomain[labelsDomain.length - 1];
+
+  // Pré-computa médias
+  const medias = {};
+  METRICAS.forEach(m => {
+    const vals = comMetricas.map(a => a.metricas[FIELD_MAP[m]]).filter(v => v != null && !isNaN(v));
+    medias[m] = vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : null;
   });
 
-  // Destacar a sessão atual com banda vertical
-  const marcas = [
-    Plot.line(grafRows,  { x: "label", y: "valor", stroke: "metrica", strokeWidth: 2, tip: true }),
-    Plot.dot(grafRows,   { x: "label", y: "valor", fill: "metrica", r: 3.5 }),
-  ];
-  const sessaoAtualLabel = `#${idLog}`;
-  if (labelsDomain.includes(sessaoAtualLabel)) {
-    marcas.unshift(Plot.barX(
-      [{ label: sessaoAtualLabel }],
-      { x: "label", fill: "var(--theme-background-alt)", inset: -0.5 }
-    ));
-  }
+  // null = todas em destaque; string = só aquela em destaque, demais esmaecidas
+  let serieDestaque = null;
 
-  const wrap = document.createElement("div");
-  try {
-    const chart = Plot.plot({
-      width: 680,
-      height: 220,
-      marginLeft: 36, marginRight: 8, marginBottom: 44, marginTop: 12,
-      x: {
-        label: null,
-        domain: labelsDomain,
-        tickRotate: labelsDomain.length > 6 ? -40 : 0,
-      },
-      y: { label: "%", domain: [0, 100], grid: true, ticks: 5 },
-      color: { domain: ["Precisão", "Objetivos", "Fluidez"], range: COR_RANGE },
-      marks: marcas,
+  const container = document.createElement("div");
+
+  function render() {
+    container.innerHTML = "";
+
+    // Rows completos (todas as séries sempre presentes)
+    const allRows = comMetricas.flatMap(a => {
+      const label = `#${a.sessao.id_log}`;
+      return METRICAS.map(m => ({ label, metrica: m, valor: a.metricas[FIELD_MAP[m]] }));
     });
 
-    const leg = document.createElement("div");
-    leg.style.cssText = "display:flex;gap:1rem;justify-content:center;margin-top:6px;";
-    ["Precisão", "Objetivos", "Fluidez"].forEach((m, i) => {
-      const item = document.createElement("span");
-      item.style.cssText = "font-size:.72rem;font-weight:600;display:flex;align-items:center;gap:4px;color:var(--theme-foreground-muted);";
-      const dot = document.createElement("span");
-      dot.style.cssText = `width:8px;height:8px;border-radius:50%;background:${COR_RANGE[i]};flex-shrink:0;display:inline-block;`;
-      item.append(dot, m);
-      leg.append(item);
+    const marcas = [];
+
+    if (labelsDomain.includes(sessaoAtualLabel)) {
+      marcas.push(Plot.barX(
+        [{ label: sessaoAtualLabel }],
+        { x: "label", fill: "var(--theme-background-alt)", inset: -0.5 }
+      ));
+    }
+
+    // Linha de média tracejada por série
+    METRICAS.forEach((m, i) => {
+      if (medias[m] == null) return;
+      const apagado = serieDestaque !== null && serieDestaque !== m;
+      marcas.push(Plot.ruleY([medias[m]], {
+        stroke: COR_RANGE[i],
+        strokeWidth: 1.5,
+        strokeDasharray: "4,3",
+        strokeOpacity: apagado ? 0.08 : 0.5,
+      }));
     });
 
-    wrap.append(chart, leg);
-  } catch(e) {
-    console.error("renderizarEvolucao:", e);
-    wrap.textContent = "Erro ao renderizar o gráfico.";
+    // Linhas e dots por série (marks individuais para controlar opacidade)
+    METRICAS.forEach((m, i) => {
+      const rows = allRows.filter(r => r.metrica === m);
+      const apagado = serieDestaque !== null && serieDestaque !== m;
+      const op = apagado ? 0.1 : 1;
+      marcas.push(Plot.line(rows, {
+        x: "label", y: "valor",
+        stroke: COR_RANGE[i], strokeWidth: apagado ? 1.5 : 2.5,
+        strokeOpacity: op, tip: true,
+      }));
+      marcas.push(Plot.dot(rows.filter(r => r.label !== ultimaLabel), {
+        x: "label", y: "valor",
+        stroke: COR_RANGE[i], fill: "white", r: 3.5,
+        strokeOpacity: op, fillOpacity: op,
+      }));
+      marcas.push(Plot.dot(rows.filter(r => r.label === ultimaLabel), {
+        x: "label", y: "valor",
+        fill: COR_RANGE[i], r: apagado ? 3.5 : 5,
+        fillOpacity: op,
+      }));
+    });
+
+    try {
+      const chart = Plot.plot({
+        width: 680,
+        height: 220,
+        marginLeft: 36, marginRight: 8, marginBottom: 44, marginTop: 12,
+        x: {
+          label: null,
+          domain: labelsDomain,
+          tickRotate: labelsDomain.length > 6 ? -40 : 0,
+        },
+        y: { label: "%", domain: [0, 100], grid: true, ticks: 5 },
+        marks: marcas,
+      });
+
+      // ── Legenda interativa (solo/destaque) ─────────────────────────────
+      const leg = document.createElement("div");
+      leg.style.cssText = `display:flex;gap:.75rem;justify-content:center;margin-top:6px;
+        padding:5px 12px;background:var(--theme-background-alt);
+        border:1px solid var(--theme-foreground-faintest);border-radius:8px;
+        width:fit-content;margin-left:auto;margin-right:auto;user-select:none;`;
+
+      METRICAS.forEach((m, i) => {
+        const isDestaque = serieDestaque === m;
+        const apagado    = serieDestaque !== null && !isDestaque;
+        const item = document.createElement("div");
+        item.style.cssText = `display:flex;align-items:center;gap:5px;cursor:pointer;
+          opacity:${apagado ? 0.3 : 1};transition:opacity .15s;`;
+        const dot = document.createElement("span");
+        dot.style.cssText = `width:9px;height:9px;border-radius:50%;background:${COR_RANGE[i]};
+          flex-shrink:0;display:inline-block;
+          box-shadow:${isDestaque ? `0 0 0 2px ${COR_RANGE[i]}44` : "none"};`;
+        const txt = document.createElement("span");
+        txt.style.cssText = `font-size:.72rem;font-weight:${isDestaque ? 700 : 600};
+          color:${isDestaque ? COR_RANGE[i] : "var(--theme-foreground-muted)"};white-space:nowrap;`;
+        txt.textContent = m;
+        const media = document.createElement("span");
+        media.style.cssText = `font-size:.65rem;color:var(--theme-foreground-faint);
+          margin-left:1px;white-space:nowrap;`;
+        media.textContent = medias[m] != null ? `⌀ ${Math.round(medias[m])}%` : "";
+        item.append(dot, txt, media);
+        item.addEventListener("click", () => {
+          serieDestaque = serieDestaque === m ? null : m;
+          render();
+        });
+        leg.append(item);
+      });
+
+      container.append(chart, leg);
+    } catch(e) {
+      console.error("renderizarEvolucao:", e);
+      container.textContent = "Erro ao renderizar o gráfico.";
+    }
   }
-  return wrap;
+
+  render();
+  return container;
 }
 
 // ── Render ────────────────────────────────────────────────────────────────────
@@ -343,11 +413,12 @@ display(html`<div>
   <p class="section-title">Eficiência da Rota (mesmo mapa)</p>
   <div class="analise-card" style="margin-bottom:1.5rem;">
     <div class="analise-card-header">
-      <span class="analise-card-title">Distância Percorrida vs Rota Ideal</span>
+      <span class="analise-card-title">Distância Percorrida vs Menor Caminho</span>
     </div>
     <div class="analise-card-body">${(() => {
       try {
-        const g = sessoesComLog.length >= 1 ? graficoEficienciaRota(sessoesComLog, Plot) : null;
+        const mapaRaw = gruposPorMapa.find(g => g.mapaRaw)?.mapaRaw ?? null;
+        const g = sessoesComLog.length >= 1 ? graficoEficienciaRota(sessoesComLog, Plot, mapaRaw) : null;
         if (g) return g;
         const p = document.createElement("p");
         p.className = "no-data-card";
