@@ -629,6 +629,7 @@ export function graficoEficienciaRota(sessoesComLog, Plot, mapaRaw = null) {
   const { cols = 0, rows = 0 } = mapaRaw ?? {};
 
   const dados = [];
+  let idealValor = 0;
 
   for (const { sessao, dadosLog } of sessoesComLog) {
     const lbl = label(sessao);
@@ -706,39 +707,41 @@ export function graficoEficienciaRota(sessoesComLog, Plot, mapaRaw = null) {
     }
 
     if (real > 0) {
-      dados.push({ lbl, tipo: "Percorrida (Real)", passos: real });
-      if (ideal > 0) dados.push({ lbl, tipo: "Menor Caminho", passos: ideal });
+      dados.push({ lbl, passos: real });
+      if (ideal > 0 && idealValor === 0) idealValor = ideal;
     }
   }
 
   if (!dados.length) return aviso("Sem dados de movimentação disponíveis.");
 
-  const labels  = [...new Set(dados.map(d => d.lbl))];
+  const labels  = dados.map(d => d.lbl);
   const mbottom = labels.length > 6 ? 64 : 40;
 
-  const CORES = { "Percorrida (Real)": "#377eb8", "Menor Caminho": "#4daf4a" };
+  const COR_REAL  = "#377eb8";
+  const COR_IDEAL = "#4daf4a";
 
   const chart = Plot.plot({
     width: W * 2, height: 280,
     marginLeft: 48, marginRight: 12, marginTop: 12, marginBottom: mbottom,
-    x: { axis: null },
-    fx: {
-      label: null,
-      padding: 0.15,
-      tickRotate: labels.length > 6 ? -40 : 0,
-      tickSize: 6,
-    },
-    y: { label: "↑ Passos (tiles)", grid: true, labelAnchor: "center", labelArrow: "none" },
-    color: {
-      domain: Object.keys(CORES),
-      range:  Object.values(CORES),
-    },
+    x: { label: null, domain: labels, tickRotate: labels.length > 6 ? -40 : 0 },
+    y: { label: "↑ Passos (Blocos)", grid: true, labelAnchor: "center", labelArrow: "none" },
     marks: [
       Plot.barY(dados, {
-        x: "tipo", y: "passos", fx: "lbl",
-        fill: "tipo", tip: true, rx: 2,
-        title: d => `${d.tipo}  —  ${d.lbl}\n${d.passos} passos`,
+        x: "lbl", y: "passos",
+        fill: COR_REAL, tip: true, rx: 2,
+        title: d => `${d.lbl}\n${d.passos} blocos`,
       }),
+      ...(idealValor > 0 ? [
+        Plot.ruleY([idealValor], {
+          stroke: COR_IDEAL, strokeWidth: 2, strokeDasharray: "5,3",
+        }),
+        Plot.text([{ x: labels[labels.length - 1], y: idealValor }], {
+          x: "x", y: "y",
+          text: () => `${idealValor} blocos`,
+          dy: -7, fontSize: 10, fill: COR_IDEAL, fontWeight: 600,
+          textAnchor: "end",
+        }),
+      ] : []),
       Plot.ruleY([0]),
     ],
   });
@@ -749,15 +752,37 @@ export function graficoEficienciaRota(sessoesComLog, Plot, mapaRaw = null) {
     padding:4px 12px;background:var(--theme-background-alt);
     border:1px solid var(--theme-foreground-faintest);border-radius:8px;
     width:fit-content;margin-left:auto;margin-right:auto;`;
-  for (const [label_, cor] of Object.entries(CORES)) {
-    const item = document.createElement("div");
+
+  // Barra — Percorrida (Real)
+  { const item = document.createElement("div");
     item.style.cssText = "display:flex;align-items:center;gap:5px;";
     const sq = document.createElement("span");
-    sq.style.cssText = `width:12px;height:12px;border-radius:3px;background:${cor};flex-shrink:0;`;
+    sq.style.cssText = `width:12px;height:12px;border-radius:3px;background:${COR_REAL};flex-shrink:0;`;
     const txt = document.createElement("span");
     txt.style.cssText = "font-size:.72rem;font-weight:600;color:var(--theme-foreground-muted);white-space:nowrap;";
-    txt.textContent = label_;
+    txt.textContent = "Percorrida (Real)";
     item.append(sq, txt);
+    leg.append(item); }
+
+  // Linha tracejada — Menor Caminho
+  if (idealValor > 0) {
+    const item = document.createElement("div");
+    item.style.cssText = "display:flex;align-items:center;gap:5px;";
+    const svgNS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(svgNS, "svg");
+    svg.setAttribute("width", "20"); svg.setAttribute("height", "12");
+    svg.style.flexShrink = "0";
+    const line = document.createElementNS(svgNS, "line");
+    line.setAttribute("x1", "0"); line.setAttribute("y1", "6");
+    line.setAttribute("x2", "20"); line.setAttribute("y2", "6");
+    line.setAttribute("stroke", COR_IDEAL);
+    line.setAttribute("stroke-width", "2");
+    line.setAttribute("stroke-dasharray", "5,3");
+    svg.append(line);
+    const txt = document.createElement("span");
+    txt.style.cssText = "font-size:.72rem;font-weight:600;color:var(--theme-foreground-muted);white-space:nowrap;";
+    txt.textContent = `Menor Caminho (${idealValor} blocos)`;
+    item.append(svg, txt);
     leg.append(item);
   }
 

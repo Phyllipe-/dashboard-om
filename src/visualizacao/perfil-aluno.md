@@ -24,6 +24,12 @@ toc: false
     .perfil-layout { grid-template-columns:1fr; }
   }
 
+  /* Seção de análise — espelha colunas do perfil-layout para alinhar com colCentro */
+  .analise-section { display:grid; grid-template-columns:260px 1fr 380px; gap:1rem; margin-top:1rem; }
+  .analise-section-corpo { grid-column:2/3; }
+  @media(max-width:1100px) { .analise-section { grid-template-columns:220px 1fr; } }
+  @media(max-width:700px)  { .analise-section { grid-template-columns:1fr; } .analise-section-corpo { grid-column:1/-1; } }
+
   /* ── Painel genérico ──────────────────────────── */
   .painel {
     background:var(--theme-background);
@@ -220,11 +226,82 @@ toc: false
     padding:.2rem 0 0;
   }
   .filtro-badge span { color:var(--om-accent); }
+
+  /* ── Toggle "Análise por Mapa" ────────────────────── */
+  /* Cards de análise por mapa */
+  .analise-grid { display:flex; flex-direction:column; gap:1rem; margin-top:1rem; }
+  .analise-section-direita { grid-column:3/4; display:flex; flex-direction:column; gap:1rem; margin-top:1rem; }
+  @media(max-width:1100px) { .analise-section-direita { grid-column:2/3; } }
+  @media(max-width:700px)  { .analise-section-direita { grid-column:1/-1; } }
+  .analise-card { border:1px solid var(--theme-foreground-faintest); border-radius:10px; overflow:hidden; }
+  .analise-card-header { display:flex; align-items:center; justify-content:space-between; padding:.65rem 1rem; background:var(--theme-background-alt); border-bottom:1px solid var(--theme-foreground-faintest); }
+  .analise-card-title { font-size:.875rem; font-weight:700; }
+  .analise-card-body { padding:.85rem 1rem; font-size:.875rem; }
+  .no-data-card { color:var(--theme-foreground-muted); font-style:italic; font-size:.85rem; padding:.3rem 0; }
+
+  .multi-analise-toggle {
+    width:100%; display:flex; align-items:center; justify-content:space-between;
+    padding:.3rem .55rem; border-radius:8px;
+    border:1px solid var(--theme-foreground-faint);
+    background:transparent; cursor:pointer;
+    font-size:.78rem; color:var(--theme-foreground-muted);
+    gap:.5rem; margin:.5rem 0 .3rem;
+    transition:border-color .15s, background .15s;
+  }
+  .multi-analise-toggle.on {
+    border-color:var(--om-accent);
+    background:color-mix(in srgb, var(--om-accent) 10%, transparent);
+    color:var(--theme-foreground);
+  }
+  .multi-toggle-knob {
+    position:relative; width:32px; height:18px; border-radius:9px;
+    background:var(--theme-foreground-faintest); flex-shrink:0;
+    transition:background .15s;
+  }
+  .multi-toggle-knob::after {
+    content:""; position:absolute; top:3px; left:3px;
+    width:12px; height:12px; border-radius:50%;
+    background:var(--theme-foreground-muted);
+    transition:transform .15s, background .15s;
+  }
+  .multi-analise-toggle.on .multi-toggle-knob { background:var(--om-accent); }
+  .multi-analise-toggle.on .multi-toggle-knob::after { transform:translateX(14px); background:#fff; }
+
+  .multi-analise-list {
+    display:flex; flex-direction:column; gap:0;
+    max-height:300px; overflow-y:auto;
+    margin:.2rem 0 .35rem;
+    border:1px solid var(--theme-foreground-faintest); border-radius:8px;
+  }
+  .multi-mapa-group { border-bottom:1px solid var(--theme-foreground-faintest); }
+  .multi-mapa-group:last-child { border-bottom:none; }
+  .multi-mapa-header {
+    display:flex; align-items:center; gap:.55rem;
+    padding:.3rem .65rem .2rem; font-size:.76rem; font-weight:700;
+    background:var(--theme-background-alt);
+    cursor:pointer; user-select:none;
+  }
+  .multi-mapa-header:hover { filter:brightness(0.97); }
+  .multi-mapa-group.open .multi-mapa-header { border-bottom:1px solid var(--theme-foreground-faintest); }
+  .multi-mapa-arrow { font-size:.55rem; color:var(--theme-foreground-muted); flex-shrink:0; transition:transform .18s; }
+  .multi-mapa-group.open .multi-mapa-arrow { transform:rotate(90deg); }
+  .multi-sessoes-body { display:none; }
+  .multi-mapa-group.open .multi-sessoes-body { display:block; }
+  .multi-mapa-chk { accent-color:var(--om-accent); flex-shrink:0; cursor:pointer; }
+  .multi-sessao-row {
+    display:flex; align-items:center; gap:.5rem;
+    font-size:.78rem; color:var(--theme-foreground-muted);
+    padding:.2rem .65rem; border-bottom:1px solid var(--theme-foreground-faintest);
+    cursor:pointer;
+  }
+  .multi-sessao-row:last-child { border-bottom:none; }
+  .multi-sessao-row:hover { background:var(--theme-background-alt); }
+  .multi-sessao-row input[type=checkbox] { accent-color:var(--om-accent); flex-shrink:0; }
 </style>
 
 ```js
 import { requireAuth, logout } from "../auth.js";
-import { fetchAlunos, fetchAluno, fetchSessoes, fetchSessao, fetchAnalises, fetchMetricas } from "../api.js";
+import { fetchAlunos, fetchAluno, fetchSessoes, fetchSessao, fetchAnalises, fetchMetricas, fetchPreferenciasQuadros } from "../api.js";
 import * as Plot from "npm:@observablehq/plot";
 import * as d3   from "npm:d3";
 import { detectarGiros, MARCADORES_GIRO } from "../lib/sessao/giros.js";
@@ -233,13 +310,45 @@ import { extrairSegmentos, extrairColisoes, corSegmento, raioColisao } from "../
 import { extrairLateralidade, corpoSVGElement, COR_DIREITA as LAT_COR_DIR, COR_ESQUERDA as LAT_COR_ESQ } from "../lib/sessao/lateralidade.js";
 import { parseMapaXML } from "../lib/mapa/parser.js";
 import { mapaParaGeoJSON } from "../lib/mapa/geojson.js";
-import { graficoWaffleMultimetrica } from "../lib/atividade/comparar.js";
+import {
+  graficoLateralidade,
+  graficoTrafego,
+  graficoGiros,
+  graficoGirosTreemap,
+  graficoEvolucaoLongitudinal,
+  graficoEficienciaRota,
+} from "../lib/sessao/detalhamento.js";
 
 const currentUser = requireAuth();
 const headerUser   = document.getElementById("header-user");
 const headerLogout = document.getElementById("header-logout");
 if (headerUser)   headerUser.textContent = currentUser.nome;
 if (headerLogout) headerLogout.addEventListener("click", logout);
+
+// ── Preferências de quadros (visibilidade por padrão ou customizada) ──────────
+let _prefMap = {};       // chave → visivel
+let _sessaoUnicaMap = {}; // chave → exclusivo_sessao_unica
+try {
+  const prefs = await fetchPreferenciasQuadros();
+  for (const p of prefs) {
+    _prefMap[p.chave] = p.visivel;
+    if (p.exclusivo_sessao_unica) _sessaoUnicaMap[p.chave] = true;
+  }
+} catch(_) {}
+
+function _visivel(chave) {
+  return _prefMap[chave] !== undefined ? _prefMap[chave] : true;
+}
+function _exclusivoSessaoUnica(chave) {
+  return !!_sessaoUnicaMap[chave];
+}
+
+function aplicarVisibilidade() {
+  document.querySelectorAll("[data-quadro-chave]").forEach(el => {
+    const chave = el.dataset.quadroChave;
+    el.style.display = (_visivel(chave) && !(_exclusivoSessaoUnica(chave) && multiAnalise)) ? "" : "none";
+  });
+}
 
 // ── Paleta de avatares ────────────────────────────────────────────────────
 const AVATAR_COLORS = ["#e07b54","#4a90d9","#5ba85b","#c9a227","#9b59b6","#2eaaa8"];
@@ -275,6 +384,7 @@ let estado = {
   filtroMapa:    "todas",
   filtroConcl:   "todas",   // "todas" | "concluidas" | "nao_concluidas"
   filtroSessaoId: null,      // null = todas; number = sessão específica
+  sessoesMultiSelecionadas: [],  // ids selecionados no modo multi-análise
 };
 
 // ── Elementos do DOM ──────────────────────────────────────────────────────
@@ -318,6 +428,203 @@ const filtroBtnTodas    = document.createElement("button"); filtroBtnTodas.textC
 const filtroBtnConcl    = document.createElement("button"); filtroBtnConcl.textContent    = "Concluídas";
 const filtroBtnNaoConcl = document.createElement("button"); filtroBtnNaoConcl.textContent = "Não concluídas";
 const filtroBadge       = document.createElement("div");    filtroBadge.className = "filtro-badge";
+
+// ── Toggle "Análise por Mapa" ─────────────────────────────────────────────
+const multiAnaliseBtn = document.createElement("button");
+multiAnaliseBtn.className = "multi-analise-toggle";
+multiAnaliseBtn.type = "button";
+{ const lbl = document.createElement("span"); lbl.textContent = "Sessões Múltiplas";
+  const knob = document.createElement("span"); knob.className = "multi-toggle-knob";
+  multiAnaliseBtn.append(lbl, knob); }
+
+const multiAnaliseContainer = document.createElement("div");
+multiAnaliseContainer.className = "multi-analise-list";
+multiAnaliseContainer.style.display = "none";
+
+let multiAnalise = false;
+
+function setMultiAnalise(val) {
+  multiAnalise = val;
+  if (!val) estado.sessoesMultiSelecionadas = [];
+  multiAnaliseBtn.classList.toggle("on", val);
+  filtroSessaoSelect.disabled = val;
+  filtroSessaoSelect.style.opacity = val ? "0.4" : "";
+  multiAnaliseContainer.style.display = val ? "" : "none";
+  if (val) atualizarMultiAnaliseList();
+  document.querySelectorAll("[data-quadro-chave]").forEach(el => {
+    const chave = el.dataset.quadroChave;
+    if (_exclusivoSessaoUnica(chave)) {
+      el.style.display = (val || !_visivel(chave)) ? "none" : "";
+    }
+  });
+}
+
+function atualizarMultiAnaliseList() {
+  multiAnaliseContainer.replaceChildren();
+  const { sessoes, filtroConcl } = estado;
+
+  if (!sessoes.length) {
+    const hint = document.createElement("div");
+    hint.style.cssText = "font-size:.78rem;color:var(--theme-foreground-muted);font-style:italic;padding:.5rem .7rem;";
+    hint.textContent = "Nenhuma sessão disponível.";
+    multiAnaliseContainer.append(hint); return;
+  }
+
+  const grupos = new Map();
+  for (const s of sessoes) {
+    if (filtroConcl === "concluidas"     && !s.cleared_map) continue;
+    if (filtroConcl === "nao_concluidas" &&  s.cleared_map) continue;
+    const key = s.nome_mapa ?? "—";
+    if (!grupos.has(key)) grupos.set(key, []);
+    grupos.get(key).push(s);
+  }
+
+  const mapaAtivo = estado.sessoesMultiSelecionadas.length > 0 ? estado.filtroMapa : null;
+
+  function triggerUpdate() {
+    const sel = estado.sessoesMultiSelecionadas;
+    const mapaAtual = sel.length > 0
+      ? (estado.sessoes.find(ss => ss.id_log === sel[0])?.nome_mapa ?? "todas")
+      : "todas";
+    estado.filtroMapa     = mapaAtual;
+    estado.filtroSessaoId = sel.length ? sel[sel.length - 1] : null;
+    filtroMapaSelect.value = estado.filtroMapa;
+    const n = sel.length;
+    filtroBadge.innerHTML = n
+      ? `<span>${n}</span> sess${n > 1 ? "ões" : "ão"} selecionada${n > 1 ? "s" : ""}`
+      : "Nenhuma sessão selecionada";
+    const filtradas = sessoesFiltradas();
+    atualizarStats(filtradas);
+    atualizarAnaliseBar(filtradas);
+    atualizarSessionList(filtradas);
+
+    if (estado.filtroSessaoId) carregarMapaGiros(estado.filtroSessaoId);
+    atualizarDetalhesPorMapa().catch(e => console.error("atualizarDetalhesPorMapa:", e));
+  }
+
+  let cidx = 0;
+  for (const [nomeMapa, sessoesDoMapa] of grupos) {
+    const cor = COR_SESSAO[cidx % COR_SESSAO.length]; cidx++;
+    const isOpen = nomeMapa === mapaAtivo || grupos.size === 1;
+    const idsDoMapa = sessoesDoMapa.map(s => s.id_log);
+
+    const group = document.createElement("div");
+    group.className = "multi-mapa-group" + (isOpen ? " open" : "");
+
+    // ── Cabeçalho ──────────────────────────────────────────────────────────
+    const mapaHdr = document.createElement("div");
+    mapaHdr.className = "multi-mapa-header";
+
+    const arrow = document.createElement("span");
+    arrow.className = "multi-mapa-arrow";
+    arrow.textContent = "▶";
+
+    const dot = document.createElement("div");
+    dot.style.cssText = `width:7px;height:7px;border-radius:50%;background:${cor};flex-shrink:0;`;
+
+    const nm = document.createElement("span");
+    nm.textContent = nomeMapa;
+    nm.style.color = cor;
+
+    const ct = document.createElement("span");
+    ct.style.cssText = "font-weight:400;color:var(--theme-foreground-muted);font-size:.72rem;margin-right:auto;";
+    ct.textContent = `${sessoesDoMapa.length} sess${sessoesDoMapa.length !== 1 ? "ões" : "ão"}`;
+
+    const hdrChk = document.createElement("input");
+    hdrChk.type = "checkbox";
+    hdrChk.className = "multi-mapa-chk";
+    hdrChk.dataset.mapa = nomeMapa;
+    hdrChk.title = "Selecionar todas as sessões deste mapa";
+
+    const updateHdrState = () => {
+      const nSel = idsDoMapa.filter(id => estado.sessoesMultiSelecionadas.includes(id)).length;
+      hdrChk.checked       = nSel > 0 && nSel === idsDoMapa.length;
+      hdrChk.indeterminate = nSel > 0 && nSel < idsDoMapa.length;
+    };
+    updateHdrState();
+
+    mapaHdr.append(arrow, dot, nm, ct, hdrChk);
+
+    // ── Sessões ────────────────────────────────────────────────────────────
+    const body = document.createElement("div");
+    body.className = "multi-sessoes-body";
+
+    for (const s of sessoesDoMapa) {
+      const row = document.createElement("label");
+      row.className = "multi-sessao-row";
+
+      const chk = document.createElement("input");
+      chk.type = "checkbox";
+      chk.dataset.mapa = nomeMapa;
+      chk.checked = estado.sessoesMultiSelecionadas.includes(s.id_log);
+
+      const dataEl = document.createElement("span"); dataEl.className = "si-data";
+      dataEl.textContent = s.data?.slice(0,10) ?? "—";
+      const idEl = document.createElement("span"); idEl.className = "si-id";
+      idEl.textContent = `#${s.id_log}`;
+      const badgeWrap = document.createElement("span");
+      badgeWrap.style.cssText = "flex:1;display:flex;justify-content:flex-end;";
+      const badge = document.createElement("span");
+      badge.className = s.cleared_map ? "badge-ok" : "badge-no";
+      badge.style.cssText = "font-size:.62rem;padding:.05rem .35rem;";
+      badge.textContent = s.cleared_map ? "Concluída" : "Não concluída";
+      badgeWrap.append(badge);
+
+      row.append(chk, dataEl, idEl, badgeWrap);
+
+      chk.addEventListener("change", () => {
+        if (chk.checked) {
+          multiAnaliseContainer.querySelectorAll("input[type=checkbox]").forEach(other => {
+            if (other.dataset.mapa !== nomeMapa) other.checked = false;
+          });
+          estado.sessoesMultiSelecionadas = estado.sessoesMultiSelecionadas
+            .filter(id => estado.sessoes.find(ss => ss.id_log === id && ss.nome_mapa === nomeMapa));
+          if (!estado.sessoesMultiSelecionadas.includes(s.id_log)) {
+            estado.sessoesMultiSelecionadas = [...estado.sessoesMultiSelecionadas, s.id_log];
+          }
+        } else {
+          estado.sessoesMultiSelecionadas = estado.sessoesMultiSelecionadas.filter(id => id !== s.id_log);
+        }
+        updateHdrState();
+        triggerUpdate();
+      });
+
+      body.append(row);
+    }
+
+    // Accordion: clique no cabeçalho (mas não no checkbox)
+    mapaHdr.addEventListener("click", (e) => {
+      if (e.target === hdrChk) return;
+      group.classList.toggle("open");
+    });
+
+    // Checkbox do cabeçalho: selecionar/desselecionar todas as sessões do mapa
+    hdrChk.addEventListener("change", (e) => {
+      e.stopPropagation();
+      multiAnaliseContainer.querySelectorAll("input[type=checkbox]").forEach(other => {
+        if (other.dataset.mapa !== nomeMapa) other.checked = false;
+      });
+      estado.sessoesMultiSelecionadas = estado.sessoesMultiSelecionadas
+        .filter(id => estado.sessoes.find(ss => ss.id_log === id && ss.nome_mapa === nomeMapa));
+
+      if (hdrChk.checked) {
+        body.querySelectorAll("input[type=checkbox]").forEach(c => c.checked = true);
+        estado.sessoesMultiSelecionadas = [...new Set([...estado.sessoesMultiSelecionadas, ...idsDoMapa])];
+        group.classList.add("open");
+      } else {
+        body.querySelectorAll("input[type=checkbox]").forEach(c => c.checked = false);
+        estado.sessoesMultiSelecionadas = [];
+      }
+      updateHdrState();
+      triggerUpdate();
+    });
+
+    group.append(mapaHdr, body);
+    multiAnaliseContainer.append(group);
+  }
+}
+
+multiAnaliseBtn.addEventListener("click", () => setMultiAnalise(!multiAnalise));
 
 filtroBtnTodas.className    = "active";
 filtroBtnConcl.className    = "";
@@ -410,7 +717,7 @@ function aplicarFiltroSessoes() {
   atualizarStats(filtradas);
   atualizarAnaliseBar(filtradas);
   atualizarSessionList(filtradas);
-  atualizarWaffle(filtradas);
+  if (multiAnalise) atualizarMultiAnaliseList();
 
   // Mapa de giros — usa a primeira sessão filtrada
   const target = filtradas[0];
@@ -428,6 +735,7 @@ function aplicarFiltroSessoes() {
     renderizarLateralidade();
     renderizarComportamental();
   }
+  atualizarDetalhesPorMapa().catch(e => console.error("atualizarDetalhesPorMapa:", e));
 }
 
 // ── Mapa de Giros — estado e elementos ───────────────────────────────────
@@ -1371,6 +1679,40 @@ function _renderizarColisao() {
   }
   legenda.append(secCol);
 
+  // — Ponto Inicial —
+  if (personPoints.length) {
+    const secInicio = document.createElement("div");
+    secInicio.style.cssText = "display:flex;flex-direction:column;gap:5px;border-top:1px solid var(--theme-foreground-faintest);padding-top:8px;";
+    const inicioRow = document.createElement("div");
+    inicioRow.style.cssText = "display:flex;align-items:center;gap:6px;padding:3px 4px;";
+    const SZ_INI = 14;
+    const svgIni = document.createElementNS(svgNS, "svg");
+    svgIni.setAttribute("width", SZ_INI); svgIni.setAttribute("height", SZ_INI);
+    svgIni.style.flexShrink = "0";
+    const circIni = document.createElementNS(svgNS, "circle");
+    circIni.setAttribute("cx", SZ_INI / 2); circIni.setAttribute("cy", SZ_INI / 2);
+    circIni.setAttribute("r", "5");
+    circIni.setAttribute("fill", "#222");
+    circIni.setAttribute("stroke", "#fff");
+    circIni.setAttribute("stroke-width", "1.5");
+    svgIni.append(circIni);
+    const lblIni = document.createElement("span");
+    lblIni.style.cssText = "font-size:.68rem;color:var(--theme-foreground-muted);";
+    lblIni.textContent = "Ponto Inicial";
+    inicioRow.style.cursor = "pointer";
+    inicioRow.addEventListener("click", () => {
+      if (!colPersonOverlay) return;
+      const isHidden = colPersonOverlay.style.display === "none";
+      colPersonOverlay.style.display = isHidden ? "" : "none";
+      inicioRow.style.opacity    = isHidden ? "1" : "0.35";
+      inicioRow.style.background = isHidden ? "" : "var(--theme-background)";
+      inicioRow.style.boxShadow  = isHidden ? "" : "inset 0 0 0 2px rgba(34,34,34,0.35)";
+    });
+    inicioRow.append(svgIni, lblIni);
+    secInicio.append(inicioRow);
+    legenda.append(secInicio);
+  }
+
   // — Início —
   const colPersonOverlay = personPoints.length ? mkPersonOverlay(personPoints, W2, H2, cols, rows) : null;
   if (colPersonOverlay && !chkInicio.checked) colPersonOverlay.style.display = "none";
@@ -1650,7 +1992,7 @@ function _renderizarDwell() {
     for (const v of dwellMap.values()) totalDwell += v;
     for (const v of turnsMap.values()) totalTurns += v;
     for (const items of colsMap.values()) for (const c of items) colItems.push(c);
-    renderDetailPanel("Todos os tiles de permanência", totalDwell, totalTurns, colItems);
+    renderDetailPanel("Todos as zonas de permanência", totalDwell, totalTurns, colItems);
   }
 
   function showDetail(dp) {
@@ -3294,11 +3636,7 @@ function _renderizarLateralidade() {
     const s = document.createElement("span"); s.textContent = p + "%";
     barScale.append(s);
   }
-  const barSubLabel = document.createElement("div");
-  barSubLabel.style.cssText = "font-size:.65rem;text-align:center;color:var(--theme-foreground-muted);margin-top:1px;";
-  barSubLabel.textContent = "Proporção de Ações";
-
-  barWrap.append(barTitle, barOuter, barScale, barSubLabel);
+  barWrap.append(barTitle, barOuter, barScale);
 
   // ── Silhueta + gráfico lado a lado ───────────────────────────────────────
   const row = document.createElement("div");
@@ -3346,9 +3684,10 @@ function _renderizarLateralidade() {
   const barChart = Plot.plot({
     width: chartW,
     height: 360,
+    marginTop: 28,
     marginBottom: 55,
     marginLeft: 55,
-    x: { label: "Lateralidade", tickRotate: -30 },
+    x: { label: null, tickRotate: -30 },
     y: { label: "Número de Ações", grid: true },
     marks: [
       Plot.barY(barData, {
@@ -3501,6 +3840,276 @@ function _renderizarComportamental() {
 const comportamentalContainer = document.createElement("div");
 comportamentalContainer.style.cssText = "min-height:200px";
 
+// ── Análise por Mapa (multi-sessão) ───────────────────────────────────────
+const detalhesPorMapaContainer = document.createElement("div");
+detalhesPorMapaContainer.style.cssText = "min-height:120px";
+const detalhesDireitaContainer = document.createElement("div");
+detalhesDireitaContainer.style.cssText = "display:flex;flex-direction:column;gap:1rem;";
+const mapaRawCache2 = new Map();
+let detalhesPorMapaVersion = 0;
+
+function makeCard(label, graficoFn, chave = null) {
+  const card = document.createElement("div"); card.className = "painel";
+  if (chave) {
+    card.dataset.quadroChave = chave;
+    if (!_visivel(chave)) card.style.display = "none";
+  }
+  const header = document.createElement("div"); header.className = "painel-titulo";
+  header.textContent = label;
+  const body = document.createElement("div"); body.className = "painel-corpo";
+  try {
+    const g = graficoFn();
+    if (g) body.append(g);
+    else { const p = document.createElement("p"); p.className = "no-data-card"; p.textContent = "Sem dados disponíveis."; body.append(p); }
+  } catch(e) {
+    const p = document.createElement("p"); p.className = "no-data-card"; p.textContent = "Erro ao gerar gráfico.";
+    console.error(label, e); body.append(p);
+  }
+  card.append(header, body);
+  return card;
+}
+
+function renderizarEvolucaoPorMapa(sessoesComMetricas) {
+  const comMetricas = [...sessoesComMetricas].reverse().filter(a => a.metricas);
+
+  if (!comMetricas.length) {
+    const p = document.createElement("p");
+    p.style.cssText = "font-style:italic;font-size:.85rem;color:var(--theme-foreground-muted);";
+    p.textContent = "Nenhuma métrica disponível para as sessões deste mapa.";
+    return p;
+  }
+
+  const COR_RANGE    = ["#4a90e2", "#5ba85b", "#e07b54"];
+  const METRICAS     = ["Precisão", "Objetivos", "Fluidez"];
+  const FIELD_MAP    = { "Precisão": "precisao", "Objetivos": "objetivos", "Fluidez": "fluidez" };
+  const labelsDomain = comMetricas.map(a => `#${a.sessao.id_log}`);
+  const sessaoAtualLabel = estado.filtroSessaoId ? `#${estado.filtroSessaoId}` : null;
+  const ultimaLabel  = labelsDomain[labelsDomain.length - 1];
+
+  const medias = {};
+  METRICAS.forEach(m => {
+    const vals = comMetricas.map(a => a.metricas[FIELD_MAP[m]]).filter(v => v != null && !isNaN(v));
+    medias[m] = vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : null;
+  });
+
+  let serieDestaque = null;
+  const container = document.createElement("div");
+
+  function render() {
+    container.innerHTML = "";
+
+    const allRows = comMetricas.flatMap(a => {
+      const label = `#${a.sessao.id_log}`;
+      return METRICAS.map(m => ({ label, metrica: m, valor: a.metricas[FIELD_MAP[m]] }));
+    });
+
+    const marcas = [];
+
+    if (sessaoAtualLabel && labelsDomain.includes(sessaoAtualLabel)) {
+      marcas.push(Plot.barX(
+        [{ label: sessaoAtualLabel }],
+        { x: "label", fill: "var(--theme-background-alt)", inset: -0.5 }
+      ));
+    }
+
+    METRICAS.forEach((m, i) => {
+      if (medias[m] == null) return;
+      const apagado = serieDestaque !== null && serieDestaque !== m;
+      marcas.push(Plot.ruleY([medias[m]], {
+        stroke: COR_RANGE[i], strokeWidth: 1.5,
+        strokeDasharray: "4,3", strokeOpacity: apagado ? 0.08 : 0.5,
+      }));
+    });
+
+    METRICAS.forEach((m, i) => {
+      const rows = allRows.filter(r => r.metrica === m);
+      const apagado = serieDestaque !== null && serieDestaque !== m;
+      const op = apagado ? 0.1 : 1;
+      marcas.push(Plot.line(rows, {
+        x: "label", y: "valor",
+        stroke: COR_RANGE[i], strokeWidth: apagado ? 1.5 : 2.5,
+        strokeOpacity: op, tip: true,
+      }));
+      marcas.push(Plot.dot(rows.filter(r => r.label !== ultimaLabel), {
+        x: "label", y: "valor",
+        stroke: COR_RANGE[i], fill: "white", r: 3.5,
+        strokeOpacity: op, fillOpacity: op,
+      }));
+      marcas.push(Plot.dot(rows.filter(r => r.label === ultimaLabel), {
+        x: "label", y: "valor",
+        fill: COR_RANGE[i], r: apagado ? 3.5 : 5, fillOpacity: op,
+      }));
+    });
+
+    try {
+      const chart = Plot.plot({
+        width: 680, height: 220,
+        marginLeft: 48, marginRight: 8, marginBottom: 44, marginTop: 12,
+        x: {
+          label: null, domain: labelsDomain,
+          tickRotate: labelsDomain.length > 6 ? -40 : 0,
+        },
+        y: { label: "↑ %", domain: [0, 100], grid: true, ticks: 5 },
+        marks: marcas,
+      });
+
+      const leg = document.createElement("div");
+      leg.style.cssText = `display:flex;gap:.75rem;justify-content:center;margin-top:6px;
+        padding:5px 12px;background:var(--theme-background-alt);
+        border:1px solid var(--theme-foreground-faintest);border-radius:8px;
+        width:fit-content;margin-left:auto;margin-right:auto;user-select:none;`;
+
+      METRICAS.forEach((m, i) => {
+        const isDestaque = serieDestaque === m;
+        const apagado    = serieDestaque !== null && !isDestaque;
+        const item = document.createElement("div");
+        item.style.cssText = `display:flex;align-items:center;gap:5px;cursor:pointer;
+          opacity:${apagado ? 0.3 : 1};transition:opacity .15s;`;
+        const dot = document.createElement("span");
+        dot.style.cssText = `width:9px;height:9px;border-radius:50%;background:${COR_RANGE[i]};
+          flex-shrink:0;display:inline-block;
+          box-shadow:${isDestaque ? `0 0 0 2px ${COR_RANGE[i]}44` : "none"};`;
+        const txt = document.createElement("span");
+        txt.style.cssText = `font-size:.72rem;font-weight:${isDestaque ? 700 : 600};
+          color:${isDestaque ? COR_RANGE[i] : "var(--theme-foreground-muted)"};white-space:nowrap;`;
+        txt.textContent = m;
+        const media = document.createElement("span");
+        media.style.cssText = `font-size:.65rem;color:var(--theme-foreground-faint);margin-left:1px;white-space:nowrap;`;
+        media.textContent = medias[m] != null ? `⌀ ${Math.round(medias[m])}%` : "";
+        item.append(dot, txt, media);
+        item.addEventListener("click", () => { serieDestaque = serieDestaque === m ? null : m; render(); });
+        leg.append(item);
+      });
+
+      container.append(chart, leg);
+    } catch(e) {
+      console.error("renderizarEvolucaoPorMapa:", e);
+      container.textContent = "Erro ao renderizar o gráfico.";
+    }
+  }
+
+  render();
+  return container;
+}
+
+function renderizarDetalhesPorMapa(sessoesComLog, sessoesComMetricas, mapaRaw) {
+  detalhesPorMapaContainer.replaceChildren();
+  detalhesDireitaContainer.replaceChildren();
+
+  if (!sessoesComLog.length) {
+    const hint = document.createElement("div"); hint.className = "giro-hint";
+    hint.textContent = "Sem dados de log disponíveis para as sessões deste mapa.";
+    detalhesPorMapaContainer.append(hint); return;
+  }
+
+  // Coluna direita: quadros menores alinhados com colDireita
+  detalhesDireitaContainer.append(
+    makeCard("Lateralidade por Sessões",   () => graficoLateralidade(sessoesComLog, Plot), "lat-por-sessoes"),
+    makeCard("Colisões por Sessão",        () => graficoTrafego(sessoesComLog, Plot),      "col-por-sessao"),
+    makeCard("Giros por Sessão Detalhado", () => graficoGiros(sessoesComLog, Plot),        "giros-detalhado"),
+  );
+
+  // Coluna centro: quadros maiores alinhados com colCentro
+  const treemapCard = makeCard("Giros por Sessão",                       () => graficoGirosTreemap(sessoesComLog),   "giros-por-sessao");
+  const rotaCard    = makeCard("Distância Percorrida vs Menor Caminho", () => {
+    const g = graficoEficienciaRota(sessoesComLog, Plot, mapaRaw);
+    if (g) return g;
+    const p = document.createElement("p"); p.className = "no-data-card";
+    p.textContent = "Logs insuficientes para calcular eficiência da rota."; return p;
+  }, "dist-menor-caminho");
+  const evLongCard  = makeCard("Colisões e Giros por Sessão",           () => {
+    const g = graficoEvolucaoLongitudinal(sessoesComLog, estado.filtroSessaoId, Plot);
+    if (g) return g;
+    const p = document.createElement("p"); p.className = "no-data-card";
+    p.textContent = "Logs insuficientes para exibir evolução longitudinal."; return p;
+  }, "col-giros-sessao");
+  const evolCard    = makeCard("Evolução por Sessão",                   () => renderizarEvolucaoPorMapa(sessoesComMetricas), "evolucao-sessao");
+
+  const grid = document.createElement("div"); grid.className = "analise-grid";
+  grid.append(treemapCard, rotaCard, evLongCard, evolCard);
+  detalhesPorMapaContainer.append(grid);
+}
+
+async function atualizarDetalhesPorMapa() {
+  const myVersion = ++detalhesPorMapaVersion;
+  const { filtroMapa, sessoes, sessoesMultiSelecionadas } = estado;
+
+  detalhesPorMapaContainer.replaceChildren();
+  detalhesDireitaContainer.replaceChildren();
+
+  if (filtroMapa === "todas") {
+    const hint = document.createElement("div"); hint.className = "giro-hint";
+    hint.textContent = "Selecione um mapa específico para ver a análise por sessões.";
+    detalhesPorMapaContainer.append(hint); return;
+  }
+
+  const loadingDiv = document.createElement("div"); loadingDiv.className = "giro-hint";
+  loadingDiv.textContent = "Carregando análise por sessões…";
+  detalhesPorMapaContainer.append(loadingDiv);
+
+  try {
+    const todasDoMapa = sessoes.filter(s => s.nome_mapa === filtroMapa);
+    const sessoesDoMapa = (multiAnalise && sessoesMultiSelecionadas.length > 0
+      ? todasDoMapa.filter(s => sessoesMultiSelecionadas.includes(s.id_log))
+      : todasDoMapa
+    ).slice(0, 15);
+    if (!sessoesDoMapa.length) {
+      if (myVersion !== detalhesPorMapaVersion) return;
+      detalhesPorMapaContainer.replaceChildren();
+      detalhesDireitaContainer.replaceChildren();
+      const hint = document.createElement("div"); hint.className = "giro-hint";
+      hint.textContent = "Nenhuma sessão encontrada para este mapa.";
+      detalhesPorMapaContainer.append(hint); return;
+    }
+
+    const sessoesCompletas = await Promise.all(
+      sessoesDoMapa.map(s =>
+        fetchSessao(s.id_log)
+          .then(r => ({ sessao: s, dadosLog: r.dados_log ?? null, nomeArquivoXml: r.nome_arquivo_xml ?? null, idMapa: r.id_mapa ?? null }))
+          .catch(() => ({ sessao: s, dadosLog: null, nomeArquivoXml: null, idMapa: null }))
+      )
+    );
+    if (myVersion !== detalhesPorMapaVersion) return;
+
+    const sessoesComLog = sessoesCompletas
+      .filter(s => s.dadosLog)
+      .sort((a, b) => a.sessao.id_log - b.sessao.id_log);
+
+    let mapaRaw = null;
+    for (const sc of sessoesCompletas) {
+      if (!sc.nomeArquivoXml) continue;
+      const cacheKey = sc.idMapa ?? sc.nomeArquivoXml;
+      if (mapaRawCache2.has(cacheKey)) { mapaRaw = mapaRawCache2.get(cacheKey); break; }
+      try {
+        const token = sessionStorage.getItem("om_token");
+        const partes = sc.nomeArquivoXml.replace(/^\//, "").split("/");
+        const pasta = partes[0], arquivo = partes.slice(1).join("/");
+        const resp = await fetch(`http://127.0.0.1:5000/api/treinos/arquivos/${pasta}/${arquivo}?token=${token}`);
+        if (resp.ok) { mapaRaw = parseMapaXML(await resp.text()); mapaRawCache2.set(cacheKey, mapaRaw); break; }
+      } catch(e) { console.warn("falha ao carregar XML:", e); }
+    }
+    if (myVersion !== detalhesPorMapaVersion) return;
+
+    const sessoesComMetricas = await Promise.all(
+      sessoesDoMapa.map(s =>
+        fetchMetricas(s.id_log)
+          .then(r => ({ sessao: s, metricas: r.metricas ?? null }))
+          .catch(() => ({ sessao: s, metricas: null }))
+      )
+    );
+    if (myVersion !== detalhesPorMapaVersion) return;
+
+    renderizarDetalhesPorMapa(sessoesComLog, sessoesComMetricas, mapaRaw);
+  } catch(e) {
+    if (myVersion !== detalhesPorMapaVersion) return;
+    console.error("atualizarDetalhesPorMapa:", e);
+    detalhesPorMapaContainer.replaceChildren();
+    detalhesDireitaContainer.replaceChildren();
+    const hint = document.createElement("div"); hint.className = "giro-hint";
+    hint.textContent = `Erro ao carregar análise: ${e.message}`;
+    detalhesPorMapaContainer.append(hint);
+  }
+}
 
 const analiseBar    = document.createElement("div"); analiseBar.className = "analise-bar";
 const sessionListEl = document.createElement("div"); sessionListEl.className = "session-list";
@@ -3604,8 +4213,8 @@ function atualizarSessionList(filtradas = estado.analises) {
     header.innerHTML = `
       <div class="si-dot" style="background:${cor}"></div>
       <span class="si-nome">${nomeMapa}</span>
-      <span class="si-count">${qtd} sessão${qtd !== 1 ? "ões" : ""}</span>
-      <a class="si-link" href="/visualizacao/perfil-detalhado?aluno=${estado.idAluno}&mapa=${encodeURIComponent(nomeMapa)}">→</a>`;
+      <span class="si-count">${qtd} sess${qtd !== 1 ? "ões" : "ão"}</span>
+      `;
 
     const subList = document.createElement("div");
     subList.className = "mapa-sessoes";
@@ -3639,30 +4248,16 @@ function atualizarAvatar() {
   selAvatar.textContent = initials(a.nome_completo);
 }
 
-// ── Waffle: métricas do aluno (média das sessões filtradas) ──────────────
-const waffleContainer = document.createElement("div");
-
-function atualizarWaffle(filtradas = estado.analises) {
-  waffleContainer.replaceChildren();
-  // Adapta formato: [{ metricas }] compatível com graficoWaffleMultimetrica
-  const dadosAdaptados = filtradas
-    .filter(a => a.metricas)
-    .map(a => ({ metricas: a.metricas }));
-  if (!dadosAdaptados.length) {
-    waffleContainer.innerHTML = `<p style="font-size:.82rem;color:#888;text-align:center;padding:1rem;">Sem métricas disponíveis.</p>`;
-    return;
-  }
-  const el = graficoWaffleMultimetrica(dadosAdaptados, Plot);
-  if (el) waffleContainer.append(el);
-}
 
 // ── Carregar dados do aluno selecionado ───────────────────────────────────
 async function carregarAluno(idAluno) {
   if (!idAluno) return;
-  estado.idAluno        = idAluno;
-  estado.filtroMapa     = "todas";
-  estado.filtroConcl    = "todas";
-  estado.filtroSessaoId = null;   // será definido após carregar as sessões
+  if (multiAnalise) setMultiAnalise(false);
+  estado.idAluno                 = idAluno;
+  estado.filtroMapa              = "todas";
+  estado.filtroConcl             = "todas";
+  estado.filtroSessaoId          = null;
+  estado.sessoesMultiSelecionadas = [];
 
   try {
     const [aluno, { sessoes }] = await Promise.all([
@@ -3731,10 +4326,12 @@ const colEsquerda = html`<div class="col-esquerda">
           ${filtroBtnTodas}${filtroBtnConcl}${filtroBtnNaoConcl}
         </div>
       </div>
-      <div class="filtro-sessoes-row" style="margin-top:.6rem">
+      ${multiAnaliseBtn}
+      <div class="filtro-sessoes-row" style="margin-top:.35rem">
         <label>Sessão</label>
         ${filtroSessaoSelect}
       </div>
+      ${multiAnaliseContainer}
       ${filtroBadge}
     </div>
   </div>
@@ -3759,7 +4356,7 @@ const colEsquerda = html`<div class="col-esquerda">
   </div>
 
   <!-- Sessões recentes -->
-  <div class="painel">
+  <div class="painel painel-sessao-unica" data-quadro-chave="detalhes-atividade">
     <div class="painel-titulo">Detalhes da atividade</div>
     <div class="painel-corpo">${sessionListEl}</div>
   </div>
@@ -3769,66 +4366,72 @@ const colEsquerda = html`<div class="col-esquerda">
 const colCentro = html`<div class="col-centro">
 
   <!-- Replay de Trajetória (Plot) -->
-  <div class="painel">
+  <div class="painel painel-sessao-unica" data-quadro-chave="analise-segmento">
     <div class="painel-titulo">Análise de Segmento</div>
     <div class="painel-corpo">${replayContainer}</div>
   </div>
 
   <!-- Replay de Trajetória (D3) -->
-  <div class="painel">
+  <div class="painel painel-sessao-unica" data-quadro-chave="simulador-trajetoria">
     <div class="painel-titulo">Simulador de Trajetória</div>
     <div class="painel-corpo">${replayD3Container}</div>
   </div>
 
   <!-- Mapa de Giros -->
-  <div class="painel">
+  <div class="painel" data-quadro-chave="mapa-giros">
     <div class="painel-titulo">Mapa de Giros</div>
     <div class="painel-corpo">${mapaGirosContainer}</div>
   </div>
 
   <!-- Heatmap de eventos (Court Heatmap) -->
-  <div class="painel">
-    <div class="painel-titulo">Heatmap de Eventos por Área</div>
+  <div class="painel" data-quadro-chave="eventos-area">
+    <div class="painel-titulo">Eventos por Área</div>
     <div class="painel-corpo">${heatmapContainer}</div>
   </div>
 
   <!-- Mapa de Colisão -->
-  <div class="painel">
-    <div class="painel-titulo">Colisão</div>
+  <div class="painel" data-quadro-chave="colisoes-percurso">
+    <div class="painel-titulo">Colisões no Percurso</div>
     <div class="painel-corpo">${colisaoContainer}</div>
   </div>
 
   <!-- Mapa de Permanência -->
-  <div class="painel">
-    <div class="painel-titulo">Permanência</div>
+  <div class="painel" data-quadro-chave="mapa-permanencia">
+    <div class="painel-titulo">Mapa de Permanência</div>
     <div class="painel-corpo">${dwellContainer}</div>
   </div>
+
 
 </div>`;
 
 const colDireita = html`<div class="col-direita">
 
-  <!-- Comparação de métricas (Waffle) -->
-  <div class="painel">
-    <div class="painel-titulo">Comparação de Métricas</div>
-    <div class="painel-corpo">${waffleContainer}</div>
-  </div>
+
 
   <!-- Mapa da Lateralidade -->
-  <div class="painel">
+  <div class="painel" data-quadro-chave="mapa-lateralidade">
     <div class="painel-titulo">Mapa da Lateralidade</div>
     <div class="painel-corpo">${lateralidadeContainer}</div>
   </div>
 
   <!-- Análise Comportamental -->
-  <div class="painel">
+  <div class="painel" data-quadro-chave="analise-comportamental">
     <div class="painel-titulo">Análise Comportamental</div>
     <div class="painel-corpo">${comportamentalContainer}</div>
   </div>
 
 </div>`;
 
-display(html`<div class="perfil-layout">${colEsquerda}${colCentro}${colDireita}</div>`);
+display(html`<div>
+  <div class="perfil-layout">${colEsquerda}${colCentro}${colDireita}</div>
+  <div class="analise-section">
+    <div class="analise-section-corpo">${detalhesPorMapaContainer}</div>
+    <div class="analise-section-direita">${detalhesDireitaContainer}</div>
+  </div>
+</div>`);
+
+// Aplica visibilidade dos painéis conforme preferências carregadas
+aplicarVisibilidade();
 
 // ── Carga inicial ─────────────────────────────────────────────────────────
 await carregarAluno(estado.idAluno);
