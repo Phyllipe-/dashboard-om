@@ -116,25 +116,6 @@ const alertDiv  = html`<div></div>`;
 const container = html`<div class="loading">Carregando…</div>`;
 display(container);
 
-// ── Load aluno data ───────────────────────────────────────────────────────────
-let aluno;
-try {
-  aluno = await fetchAluno(idAluno);
-  fNome.value      = aluno.nome_completo  ?? "";
-  fEmail.value     = aluno.email          ?? "";
-  fLogin.value     = aluno.login          ?? aluno.email?.split("@")[0] ?? "";
-  fNasc.value      = aluno.data_nascimento ?? "";
-  fTelefone.value  = aluno.telefone ? mascaraTelefone(aluno.telefone) : "";
-  fCep.value       = aluno.cep       ? mascaraCep(aluno.cep)           : "";
-  fLogradouro.value= aluno.logradouro ?? "";
-  [...fEscol.options].forEach(o => { if (o.value === aluno.escolaridade) o.selected = true; });
-  // dispara verificação do login pré-carregado
-  if (fLogin.value) scheduleLoginCheck(fLogin.value.trim());
-} catch (e) {
-  container.replaceWith(html`<div class="alert alert-error">Erro ao carregar aluno: ${e.message}</div>`);
-  throw e;
-}
-
 // ── Login uniqueness (exclude self) ──────────────────────────────────────────
 let loginTimer;
 function scheduleLoginCheck(login) {
@@ -160,6 +141,25 @@ function scheduleLoginCheck(login) {
   }, 500);
 }
 fLogin.addEventListener("input", () => scheduleLoginCheck(fLogin.value.trim()));
+
+// ── Load aluno data ───────────────────────────────────────────────────────────
+let aluno;
+try {
+  aluno = await fetchAluno(idAluno);
+  fNome.value      = aluno.nome_completo  ?? "";
+  fEmail.value     = aluno.email          ?? "";
+  fLogin.value     = aluno.login          ?? aluno.email?.split("@")[0] ?? "";
+  fNasc.value      = aluno.data_nascimento ?? "";
+  fTelefone.value  = aluno.telefone ? mascaraTelefone(aluno.telefone) : "";
+  fCep.value       = aluno.cep       ? mascaraCep(aluno.cep)           : "";
+  fLogradouro.value= aluno.logradouro ?? "";
+  [...fEscol.options].forEach(o => { if (o.value === aluno.escolaridade) o.selected = true; });
+  // dispara verificação do login pré-carregado
+  if (fLogin.value) scheduleLoginCheck(fLogin.value.trim());
+} catch (e) {
+  container.replaceWith(html`<div class="alert alert-error">Erro ao carregar aluno: ${e.message}</div>`);
+  throw e;
+}
 
 // ── Phone mask ────────────────────────────────────────────────────────────────
 fTelefone.addEventListener("input", () => {

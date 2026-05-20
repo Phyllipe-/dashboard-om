@@ -39,8 +39,7 @@ dashboard-om/
 │   └── visualizacao/
 │       ├── alunos.md                 # Lista geral de alunos
 │       ├── dados-aluno.md            # Dados e sessões de um aluno
-│       ├── perfil-aluno.md           # Perfil geral do aluno
-│       └── perfil-detalhado.md       # Análises detalhadas por sessão
+│       └── perfil-aluno.md           # Perfil geral do aluno
 ├── observablehq.config.js            # Navegação e configuração do app
 └── package.json
 ```

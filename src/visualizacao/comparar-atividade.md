@@ -35,7 +35,7 @@ toc: false
   .kpi-sub   { font-size: .72rem; color: var(--theme-foreground-muted); margin-top: .15rem; }
 
   /* ── 3 gráficos ─────────────────────────────────────────────────────────── */
-  .comp-charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: .75rem; margin-bottom: .75rem; align-items: stretch; }
+  .comp-charts { display: grid; grid-template-columns: repeat(3, 1fr); gap: .75rem; margin-bottom: .75rem; align-items: stretch; max-width: 960px; margin-left: auto; margin-right: auto; }
 
   .chart-card {
     background: var(--theme-background-alt);
@@ -77,7 +77,7 @@ import * as vegaLite from "npm:vega-lite";
 vl.register(vega, vegaLite, { view: { renderer: "svg" } });
 import {
   semCor, fmtPct, mediaMetricas, corAluno,
-  graficoRankingHorizontal, graficoParaleloMultimetrica, graficoBulletProgresso, tabelaHeatmap,
+  graficoParaleloMultimetrica, graficoBulletProgresso, tabelaHeatmap,
 } from "../lib/atividade/comparar.js";
 
 const currentUser = requireAuth();
@@ -110,21 +110,6 @@ for (const a of atividades) {
   selAtividade.append(opt);
 }
 
-const METRICAS_OPTS = [
-  { label: "Média Geral",  chave: "media"     },
-  { label: "Precisão",     chave: "precisao"  },
-  { label: "Objetivos",    chave: "objetivos" },
-  { label: "Fluidez",      chave: "fluidez"   },
-];
-const selMetrica = document.createElement("select");
-selMetrica.className = "comp-select";
-selMetrica.style.minWidth = "130px";
-for (const m of METRICAS_OPTS) {
-  const opt = document.createElement("option");
-  opt.value = m.chave; opt.textContent = m.label;
-  selMetrica.append(opt);
-}
-
 // ── Container principal ───────────────────────────────────────────────────────
 const root = document.createElement("div");
 
@@ -132,7 +117,7 @@ const root = document.createElement("div");
 const kpisEl   = document.createElement("div"); kpisEl.className = "comp-kpis";
 const chartsEl = document.createElement("div"); chartsEl.className = "comp-charts";
 const tableEl  = document.createElement("div");
-tableEl.style.gridColumn = "span 2";
+tableEl.style.gridColumn = "1 / -1";
 
 function loading(el, msg = "Carregando…") {
   el.innerHTML = `<div class="comp-loading">${msg}</div>`;
@@ -157,8 +142,6 @@ function kpiCard(label, valor, sub, accentColor) {
 // ── Renderizar dashboard com os dados carregados ──────────────────────────────
 async function renderizar(idAtividade) {
   const atividadeInfo = atividades.find(a => a.id_atividade == idAtividade);
-  const chaveMetrica  = selMetrica.value;
-  const labelMetrica  = METRICAS_OPTS.find(m => m.chave === chaveMetrica)?.label ?? chaveMetrica;
 
   // Mostrar estado de carregamento
   kpisEl.innerHTML   = `<div style="grid-column:1/-1;" class="comp-loading">Carregando dados…</div>`;
@@ -231,8 +214,19 @@ async function renderizar(idAtividade) {
     })()
   );
 
-  // ── 3 Gráficos ─────────────────────────────────────────────────────────────
+  // ── Gráficos ───────────────────────────────────────────────────────────────
   chartsEl.replaceChildren();
+
+  // Referências para as funções de destaque de cada gráfico
+  let highlightBullet   = null;
+  let highlightParalelo = null;
+  let highlightTable    = null;
+
+  function selectAluno(nome) {
+    highlightBullet?.(nome);
+    highlightParalelo?.(nome);
+    highlightTable?.(nome);
+  }
 
   function mountChart(title, sub, plotEl) {
     const card = document.createElement("div");
@@ -249,99 +243,28 @@ async function renderizar(idAtividade) {
     chartsEl.append(card);
   }
 
-  try { mountChart(`Ranking — ${labelMetrica} (Horizontal)`, "Desempenho médio por aluno", graficoRankingHorizontal(dadosBrutos, chaveMetrica, Plot)); }
-  catch(e) { console.error("graficoRankingHorizontal:", e); mountChart(`Ranking — ${labelMetrica} (Horizontal)`, "", null); }
+  try {
+    const c = document.createElement("div"); c.className = "chart-card"; c.style.gridColumn = "1 / -1";
+    const t = document.createElement("div"); t.className = "chart-title"; t.textContent = "Progresso por Aluno";
+    const s = document.createElement("div"); s.className = "chart-sub";   s.textContent = "Média geral vs. meta de 70% — clique numa barra para destacar o aluno";
+    c.append(t, s);
+    const result = graficoBulletProgresso(dadosBrutos, selectAluno);
+    if (result) { highlightBullet = result.highlight; c.append(result.el); }
+    else { const p = document.createElement("p"); p.className = "comp-empty"; p.textContent = "Dados insuficientes."; c.append(p); }
+    chartsEl.append(c);
+  } catch(e) { console.error("graficoBulletProgresso:", e); mountChart("Progresso por Aluno", "", null); }
 
   try {
-    const c = document.createElement("div"); c.className = "chart-card"; c.style.gridColumn = "span 2";
-    const t = document.createElement("div"); t.className = "chart-title"; t.textContent = "Comparação de métricas (Paralelo)";
+    const c = document.createElement("div"); c.className = "chart-card"; c.style.gridColumn = "1 / -1";
+    const t = document.createElement("div"); t.className = "chart-title"; t.textContent = "Comparação parâmetro base";
     const s = document.createElement("div"); s.className = "chart-sub";   s.textContent = "Cada linha = um aluno — feixes revelam padrões";
     c.append(t, s);
-    const el = graficoParaleloMultimetrica(dadosBrutos);
-    if (el) c.append(el); else { const p = document.createElement("p"); p.className = "comp-empty"; p.textContent = "Dados insuficientes."; c.append(p); }
+    const result = graficoParaleloMultimetrica(dadosBrutos);
+    if (result) { highlightParalelo = result.highlight; c.append(result.el); }
+    else { const p = document.createElement("p"); p.className = "comp-empty"; p.textContent = "Dados insuficientes."; c.append(p); }
     chartsEl.append(c);
   } catch(e) { console.error("graficoParaleloMultimetrica:", e); }
 
-
-  try { mountChart("Progresso (Bullet)", "Média geral vs. meta de 70%", graficoBulletProgresso(dadosBrutos)); }
-  catch(e) { console.error("graficoBulletProgresso:", e); mountChart("Progresso (Bullet)", "", null); }
-
-  try {
-    const vlData = dadosBrutos.filter(d => d.metricas).map(d => {
-      const media = mediaMetricas(d.metricas) ?? 0;
-      return {
-        Aluno:     d.aluno.nome_completo,
-        Precisao:  d.metricas.precisao  ?? 0,
-        Objetivos: d.metricas.objetivos ?? 0,
-        Fluidez:   d.metricas.fluidez   ?? 0,
-        Media:     media,
-        Categoria: media >= 70 ? "Bom" : media >= 40 ? "Regular" : "Atenção",
-      };
-    });
-    const panAndZoom = vl.selectInterval().bind("scales");
-    const vlChart = await vl.markCircle({ opacity: 0.85, stroke: "white", strokeWidth: 1 })
-      .select(panAndZoom)
-      .data(vlData)
-      .encode(
-        vl.x().fieldQ("Precisao").scale({ domain: [0, 100] }).title("Precisão (%)"),
-        vl.y().fieldQ("Objetivos").scale({ domain: [0, 100] }).title("Objetivos (%)"),
-        vl.size().fieldQ("Fluidez").title("Fluidez (%)").scale({ range: [60, 600] }).legend(null),
-        vl.color().fieldN("Categoria").scale({
-          domain: ["Bom", "Regular", "Atenção"],
-          range:  ["#166534", "#854d0e", "#991b1b"],
-        }).legend(null),
-        vl.tooltip([
-          { field: "Aluno",     type: "nominal",      title: "Aluno"     },
-          { field: "Precisao",  type: "quantitative", title: "Precisão"  },
-          { field: "Objetivos", type: "quantitative", title: "Objetivos" },
-          { field: "Fluidez",   type: "quantitative", title: "Fluidez"   },
-          { field: "Media",     type: "quantitative", title: "Média"     },
-        ])
-      )
-      .width(300).height(260)
-      .render();
-
-    // Legendas em DOM, empilhadas verticalmente
-    function mkLegRow(items) {
-      const row = document.createElement("div");
-      row.style.cssText = "display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:#555;margin-top:8px;";
-      for (const { cor, label, shape } of items) {
-        const item = document.createElement("span");
-        item.style.cssText = "display:inline-flex;align-items:center;gap:5px;";
-        const icon = document.createElement("span");
-        if (shape === "circle") {
-          icon.style.cssText = `width:10px;height:10px;border-radius:50%;background:${cor};flex-shrink:0;`;
-        } else {
-          icon.style.cssText = `width:10px;height:10px;border-radius:2px;background:${cor};flex-shrink:0;`;
-        }
-        const lbl = document.createElement("span"); lbl.textContent = label;
-        item.append(icon, lbl);
-        row.append(item);
-      }
-      return row;
-    }
-
-    const fluidezVals = [0, 10, 20, 30];
-    const legFluidez = mkLegRow(fluidezVals.map(v => ({ cor: "#aaa", label: `${v}%`, shape: "circle" })));
-    const legFluidezTitle = document.createElement("div");
-    legFluidezTitle.style.cssText = "font-size:11px;font-weight:700;color:#888;margin-top:10px;";
-    legFluidezTitle.textContent = "Fluidez (tamanho)";
-
-    const legCatTitle = document.createElement("div");
-    legCatTitle.style.cssText = "font-size:11px;font-weight:700;color:#888;margin-top:8px;";
-    legCatTitle.textContent = "Categoria";
-    const legCat = mkLegRow([
-      { cor: "#166534", label: "Bom",     shape: "circle" },
-      { cor: "#854d0e", label: "Regular", shape: "circle" },
-      { cor: "#991b1b", label: "Atenção", shape: "circle" },
-    ]);
-
-    const c = document.createElement("div"); c.className = "chart-card"; c.style.gridColumn = "span 2";
-    const t = document.createElement("div"); t.className = "chart-title"; t.textContent = "Dispersão — Precisão × Objetivos";
-    const s = document.createElement("div"); s.className = "chart-sub";   s.textContent = "Tamanho = Fluidez · Arraste para fazer zoom";
-    c.append(t, s, vlChart, legFluidezTitle, legFluidez, legCatTitle, legCat);
-    chartsEl.append(c);
-  } catch(e) { console.error("graficoScatter:", e); mountChart("Dispersão — Precisão × Objetivos", "", null); }
 
 
   // ── Tabela heatmap ─────────────────────────────────────────────────────────
@@ -356,8 +279,9 @@ async function renderizar(idAtividade) {
   tableHeader.append(tableTitle);
   tableWrap.append(tableHeader);
   try {
-    const tabEl = tabelaHeatmap(dadosBrutos);
-    tableWrap.append(tabEl);
+    const result = tabelaHeatmap(dadosBrutos);
+    highlightTable = result.highlight;
+    tableWrap.append(result.el);
   } catch(e) {
     console.error("tabelaHeatmap:", e);
     tableWrap.innerHTML += `<p class="comp-empty">Erro ao renderizar tabela.</p>`;
@@ -372,10 +296,7 @@ filtersEl.className = "comp-filters";
 const grpAtiv = document.createElement("div"); grpAtiv.className = "comp-filter-group";
 const lblAtiv = document.createElement("span"); lblAtiv.className = "comp-filter-label"; lblAtiv.textContent = "Atividade:";
 grpAtiv.append(lblAtiv, selAtividade);
-const grpMet = document.createElement("div"); grpMet.className = "comp-filter-group";
-const lblMet = document.createElement("span"); lblMet.className = "comp-filter-label"; lblMet.textContent = "Ranking por:";
-grpMet.append(lblMet, selMetrica);
-filtersEl.append(grpAtiv, grpMet);
+filtersEl.append(grpAtiv);
 
 const bodyEl = document.createElement("div");
 bodyEl.append(chartsEl);
@@ -386,7 +307,6 @@ display(root);
 
 // ── Reação a mudanças nos seletores ──────────────────────────────────────────
 selAtividade.addEventListener("change", () => renderizar(selAtividade.value));
-selMetrica.addEventListener("change",   () => renderizar(selAtividade.value));
 
 // ── Render inicial ────────────────────────────────────────────────────────────
 renderizar(atividades[0].id_atividade);

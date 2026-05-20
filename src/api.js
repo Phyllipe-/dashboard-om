@@ -249,3 +249,25 @@ export function fetchMetricas(id_log) {
 export function fetchMetricasAluno(id_aluno) {
   return apiFetch(`/analises/aluno/${id_aluno}/metricas`);
 }
+
+// --- Quadros ---
+
+/** GET /api/quadros/ — catálogo completo de quadros */
+export function fetchQuadros() {
+  return apiFetch("/quadros/");
+}
+
+/** PATCH /api/quadros/:id — edita nome, ativo_padrao, personalizavel (admin) */
+export function editarQuadro(id, dados) {
+  return apiFetch(`/quadros/${id}`, { method: "PATCH", body: JSON.stringify(dados) });
+}
+
+/** GET /api/quadros/preferencias/ — preferências do usuário logado */
+export function fetchPreferenciasQuadros() {
+  return apiFetch("/quadros/preferencias/");
+}
+
+/** PATCH /api/quadros/preferencias/ — salva preferências do usuário logado */
+export function salvarPreferenciasQuadros(preferencias) {
+  return apiFetch("/quadros/preferencias/", { method: "PATCH", body: JSON.stringify(preferencias) });
+}

@@ -229,7 +229,6 @@ export function graficoTrafego(sessoesComLog, Plot) {
  * Ordem das fatias: 90°←, 90°→, 180°←, 180°→, 270°←, 270°→, 360°←, 360°→
  */
 export function graficoGiros(sessoesComLog, Plot) {
-  // Tipos canônicos em ordem de empilhamento
   const TIPOS_GIRO = [
     { tipo: "90° ←",  graus: "90",  dir: 0, cor: "#aec7e8" },
     { tipo: "90° →",  graus: "90",  dir: 4, cor: "#1f77b4" },
@@ -249,53 +248,81 @@ export function graficoGiros(sessoesComLog, Plot) {
       const key = `${g.graus}° ${g.direcao === 0 ? "←" : "→"}`;
       if (contagem.has(key)) contagem.set(key, contagem.get(key) + 1);
     }
-    for (const { tipo } of TIPOS_GIRO) {
-      dados.push({ lbl, tipo, n: contagem.get(tipo) });
-    }
+    for (const { tipo } of TIPOS_GIRO) dados.push({ lbl, tipo, n: contagem.get(tipo) });
   }
 
   if (dados.every(d => d.n === 0)) return aviso("Nenhum giro detectado nessas sessões.");
 
-  const labels   = [...new Set(dados.map(d => d.lbl))];
-  const tiposDom = TIPOS_GIRO.map(t => t.tipo);
-  const cores    = TIPOS_GIRO.map(t => t.cor);
+  const labels      = [...new Set(dados.map(d => d.lbl))];
+  const tiposDom    = TIPOS_GIRO.map(t => t.tipo);
+  const cores       = TIPOS_GIRO.map(t => t.cor);
+  const corParaTipo = new Map(TIPOS_GIRO.map(t => [t.cor.toLowerCase(), t.tipo]));
 
-  const wrap = document.createElement("div");
-  wrap.style.cssText = "display:flex;flex-direction:column;gap:6px;";
+  let tipoDestaque = null;
 
-  const chart = Plot.plot({
-    width: W,
-    height: 416,
-    marginLeft: 28, marginRight: 8, marginTop: 8,
-    marginBottom: labels.length > 5 ? 56 : 36,
-    x: { label: null, domain: labels, tickRotate: labels.length > 5 ? -40 : 0 },
-    y: { label: "↑ Giros", grid: true, ticks: 4, labelAnchor: "center", labelArrow: "none" },
-    color: { domain: tiposDom, range: cores },
-    marks: [
-      Plot.barY(dados, {
-        x: "lbl", y: "n", fill: "tipo",
-        order: tiposDom,
-        tip: true,
-        title: d => `${d.tipo}: ${d.n}`,
-      }),
-      Plot.ruleY([0]),
-    ],
-  });
+  const container = document.createElement("div");
+  container.style.cssText = "display:flex;flex-direction:column;gap:6px;";
 
-  // Legenda em grid 2 colunas
-  const leg = document.createElement("div");
-  leg.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:2px 8px;";
-  for (const { tipo, cor } of TIPOS_GIRO) {
-    const item = document.createElement("span");
-    item.style.cssText = "display:flex;align-items:center;gap:4px;font-size:.6rem;color:var(--theme-foreground-muted);";
-    const sq = document.createElement("span");
-    sq.style.cssText = `width:10px;height:10px;background:${cor};border-radius:2px;flex-shrink:0;`;
-    item.append(sq, tipo);
-    leg.append(item);
+  function render() {
+    container.innerHTML = "";
+
+    const chart = Plot.plot({
+      width: W,
+      height: 416,
+      marginLeft: 28, marginRight: 8, marginTop: 8,
+      marginBottom: labels.length > 5 ? 56 : 36,
+      x: { label: null, domain: labels, tickRotate: labels.length > 5 ? -40 : 0 },
+      y: { label: "↑ Giros", grid: true, ticks: 4, labelAnchor: "center", labelArrow: "none" },
+      color: { domain: tiposDom, range: cores },
+      marks: [
+        Plot.barY(dados, {
+          x: "lbl", y: "n", fill: "tipo",
+          fillOpacity: d => tipoDestaque === null || d.tipo === tipoDestaque ? 1 : 0.1,
+          order: tiposDom,
+          tip: true,
+          title: d => `${d.tipo}: ${d.n}`,
+        }),
+        Plot.ruleY([0]),
+      ],
+    });
+
+    chart.style.cursor = "pointer";
+    chart.addEventListener("click", e => {
+      const rect = e.target.closest("rect");
+      if (!rect) { tipoDestaque = null; render(); return; }
+      const fill = (rect.getAttribute("fill") || "").toLowerCase();
+      const tipo = corParaTipo.get(fill);
+      tipoDestaque = tipo && tipoDestaque !== tipo ? tipo : null;
+      render();
+    });
+
+    // Legenda em grid 2 colunas — reflete o destaque atual
+    const leg = document.createElement("div");
+    leg.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:2px 8px;user-select:none;";
+    for (const { tipo, cor } of TIPOS_GIRO) {
+      const isDestaque = tipoDestaque === tipo;
+      const apagado    = tipoDestaque !== null && !isDestaque;
+      const item = document.createElement("div");
+      item.style.cssText = `display:flex;align-items:center;gap:4px;font-size:.6rem;cursor:pointer;
+        opacity:${apagado ? 0.3 : 1};transition:opacity .15s;`;
+      const sq = document.createElement("span");
+      sq.style.cssText = `width:10px;height:10px;background:${cor};border-radius:2px;flex-shrink:0;`;
+      const txt = document.createElement("span");
+      txt.style.cssText = `color:var(--theme-foreground-muted);font-weight:${isDestaque ? 700 : 400};`;
+      txt.textContent = tipo;
+      item.append(sq, txt);
+      item.addEventListener("click", () => {
+        tipoDestaque = tipoDestaque === tipo ? null : tipo;
+        render();
+      });
+      leg.append(item);
+    }
+
+    container.append(chart, leg);
   }
 
-  wrap.append(chart, leg);
-  return wrap;
+  render();
+  return container;
 }
 
 // ── Giros Treemap ─────────────────────────────────────────────────────────────
@@ -484,19 +511,125 @@ export function graficoComparacao(sessoesDoMapaComMetricas, idLogAtual, Plot) {
   return outer;
 }
 
+// ── Helpers BFS para Eficiência da Rota ──────────────────────────────────────
+
+/**
+ * Constrói um grid booleano de tiles bloqueados a partir do mapa parseado.
+ * Bloqueia: paredes sólidas (walls sem door/window) + furniture + eletronics + utensils.
+ */
+function buildBlockedGrid({ cols, rows, layers }) {
+  const total = cols * rows;
+  const walls = layers["walls"]            ?? [];
+  const doors = layers["door_and_windows"] ?? [];
+  const blocked = new Array(total).fill(false);
+
+  for (let i = 0; i < total; i++) {
+    if (walls[i] !== undefined && walls[i] !== "-1" &&
+        (doors[i] === undefined || doors[i] === "-1")) {
+      blocked[i] = true;
+    }
+  }
+  for (const layer of ["furniture", "eletronics", "utensils"]) {
+    const data = layers[layer] ?? [];
+    for (let i = 0; i < total; i++) {
+      if (data[i] !== undefined && data[i] !== "-1") blocked[i] = true;
+    }
+  }
+  return blocked;
+}
+
+/**
+ * Desloca um ponto para o tile livre mais próximo (BFS de expansão).
+ * Necessário quando coordenadas do log arredondam para um tile bloqueado.
+ */
+function snapToFree(cols, rows, blocked, pt) {
+  const idx = pt.z * cols + pt.x;
+  if (idx < 0 || idx >= cols * rows) return pt;
+  if (!blocked[idx]) return pt;
+  const visited = new Uint8Array(cols * rows);
+  visited[idx] = 1;
+  const queue = [idx];
+  let head = 0;
+  while (head < queue.length) {
+    const curr = queue[head++];
+    if (!blocked[curr]) return { x: curr % cols, z: Math.floor(curr / cols) };
+    const cx = curr % cols, cz = Math.floor(curr / cols);
+    for (const [dx, dz] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+      const nx = cx + dx, nz = cz + dz;
+      if (nx < 0 || nx >= cols || nz < 0 || nz >= rows) continue;
+      const ni = nz * cols + nx;
+      if (!visited[ni]) { visited[ni] = 1; queue.push(ni); }
+    }
+  }
+  return pt;
+}
+
+/**
+ * BFS ortogonal — retorna o número mínimo de passos entre dois tiles.
+ * Retorna Infinity se o destino for inacessível.
+ */
+function bfsDistancia(cols, rows, blocked, from, to) {
+  const f = blocked ? snapToFree(cols, rows, blocked, from) : from;
+  const t = blocked ? snapToFree(cols, rows, blocked, to)   : to;
+  const fromIdx = f.z * cols + f.x;
+  const toIdx   = t.z * cols + t.x;
+  if (fromIdx === toIdx) return 0;
+  if (fromIdx < 0 || fromIdx >= cols * rows) return Infinity;
+  if (toIdx   < 0 || toIdx   >= cols * rows) return Infinity;
+
+  const dist = new Int32Array(cols * rows).fill(-1);
+  dist[fromIdx] = 0;
+  const queue = [fromIdx];
+  let head = 0;
+
+  while (head < queue.length) {
+    const curr = queue[head++];
+    if (curr === toIdx) return dist[curr];
+    const cx = curr % cols, cz = Math.floor(curr / cols);
+    for (const [dx, dz] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+      const nx = cx + dx, nz = cz + dz;
+      if (nx < 0 || nx >= cols || nz < 0 || nz >= rows) continue;
+      const ni = nz * cols + nx;
+      if (blocked[ni] || dist[ni] !== -1) continue;
+      dist[ni] = dist[curr] + 1;
+      queue.push(ni);
+    }
+  }
+  return Infinity;
+}
+
+/**
+ * Extrai o ponto inicial do personagem da camada "persons" do mapa.
+ * Retorna null se a camada estiver vazia.
+ */
+function startPtFromPersonsLayer({ cols, layers }) {
+  const persons = layers["persons"] ?? [];
+  for (let i = 0; i < persons.length; i++) {
+    if (persons[i] !== undefined && persons[i] !== "-1") {
+      return { x: i % cols, z: Math.floor(i / cols) };
+    }
+  }
+  return null;
+}
+
 // ── Eficiência da Rota ────────────────────────────────────────────────────────
 /**
- * Barras agrupadas por sessão: Percorrida (Real) vs Rota Ideal.
+ * Barras agrupadas por sessão: Distância Percorrida vs Menor Caminho.
  *
- * Distância Real   — conta movimentos ortogonais consecutivos no log de ações.
- * Rota Ideal       — menor sequência Manhattan visitando os pontos de entrada
- *                    de cada objetivo (greedy nearest-neighbor, sem diagonal).
- *                    É um limite inferior: ignora obstáculos físicos do mapa.
+ * Distância Real  — conta movimentos ortogonais consecutivos no log.
+ * Menor Caminho   — BFS (quando mapaRaw disponível) ou Manhattan (fallback).
+ *                   Greedy nearest-neighbor entre waypoints de cada objetivo.
+ *                   Ponto inicial: camada "persons" do mapa ou primeira ação do log.
  *
  * Unidade: passos (tiles). Cada tile = 1 célula do grid ENA.
  */
-export function graficoEficienciaRota(sessoesComLog, Plot) {
+export function graficoEficienciaRota(sessoesComLog, Plot, mapaRaw = null) {
+  const blocked      = mapaRaw ? buildBlockedGrid(mapaRaw)          : null;
+  const mapaStart    = mapaRaw ? startPtFromPersonsLayer(mapaRaw)   : null;
+  const { cols = 0, rows = 0 } = mapaRaw ?? {};
+
   const dados = [];
+  let idealValor = 0;
 
   for (const { sessao, dadosLog } of sessoesComLog) {
     const lbl = label(sessao);
@@ -518,19 +651,22 @@ export function graficoEficienciaRota(sessoesComLog, Plot) {
       }
     }
 
-    // ── Rota Ideal (greedy nearest-neighbor, Manhattan) ──
-    // Ponto de partida: primeira ação do log
-    // Waypoints: primeiro passo de cada objetivo (exceto o primeiro)
+    // ── Menor Caminho (BFS ou Manhattan, greedy nearest-neighbor) ──
     let ideal = 0;
-    let startPt = null;
+    let startPt = mapaStart ?? null;
     const waypoints = [];
 
     for (const obj of objetivos) {
       if (!obj.actions?.length) continue;
       const a0 = obj.actions[0];
       const pt = { x: Math.round(a0.position?.x ?? 0), z: Math.round(a0.position?.z ?? 0) };
-      if (!startPt) { startPt = pt; }
-      else          { waypoints.push(pt); }
+      if (mapaStart) {
+        waypoints.push(pt);         // persons layer define início → todos os objetivos são waypoints
+      } else if (!startPt) {
+        startPt = pt;               // sem persons layer → primeira ação é o início
+      } else {
+        waypoints.push(pt);
+      }
     }
 
     if (startPt && waypoints.length) {
@@ -539,47 +675,121 @@ export function graficoEficienciaRota(sessoesComLog, Plot) {
       while (rem.length) {
         let bestDist = Infinity, bestIdx = 0;
         for (let i = 0; i < rem.length; i++) {
-          const d = Math.abs(rem[i].x - cur.x) + Math.abs(rem[i].z - cur.z);
+          const d = blocked
+            ? bfsDistancia(cols, rows, blocked, cur, rem[i])
+            : Math.abs(rem[i].x - cur.x) + Math.abs(rem[i].z - cur.z);
           if (d < bestDist) { bestDist = d; bestIdx = i; }
         }
+        if (bestDist === Infinity) break;
         ideal += bestDist;
         cur = rem[bestIdx];
         rem.splice(bestIdx, 1);
       }
     }
 
-    if (real > 0 || ideal > 0) {
-      dados.push({ lbl, tipo: "Percorrida (Real)", passos: real  });
-      dados.push({ lbl, tipo: "Rota Ideal",        passos: ideal });
+    // Fallback para sessão com objetivo único sem persons layer:
+    // usa BFS (ou Manhattan) da primeira à última posição registrada no log.
+    if (ideal === 0 && startPt) {
+      let lastPt = startPt;
+      for (const obj of objetivos) {
+        const acts = obj.actions ?? [];
+        if (acts.length > 0) {
+          const a = acts[acts.length - 1];
+          lastPt = { x: Math.round(a.position?.x ?? 0), z: Math.round(a.position?.z ?? 0) };
+        }
+      }
+      if (lastPt.x !== startPt.x || lastPt.z !== startPt.z) {
+        const d = blocked
+          ? bfsDistancia(cols, rows, blocked, startPt, lastPt)
+          : Math.abs(lastPt.x - startPt.x) + Math.abs(lastPt.z - startPt.z);
+        if (d !== Infinity) ideal = d;
+      }
+    }
+
+    if (real > 0) {
+      dados.push({ lbl, passos: real });
+      if (ideal > 0 && idealValor === 0) idealValor = ideal;
     }
   }
 
   if (!dados.length) return aviso("Sem dados de movimentação disponíveis.");
 
-  const labels  = [...new Set(dados.map(d => d.lbl))];
-  const mbottom = labels.length > 6 ? 56 : 36;
+  const labels  = dados.map(d => d.lbl);
+  const mbottom = labels.length > 6 ? 64 : 40;
 
-  return Plot.plot({
-    width: W * 2, height: 300,
-    marginLeft: 42, marginRight: 8, marginTop: 12, marginBottom: mbottom,
-    x: { label: null, axis: "bottom" },
-    fx: { label: "Sessões", padding: 0.05,
-          tickRotate: labels.length > 6 ? -40 : 0 },
-    y: { label: "Passos (tiles)", grid: true },
-    color: {
-      domain: ["Percorrida (Real)", "Rota Ideal"],
-      range:  ["#377eb8", "#4daf4a"],
-      legend: true,
-    },
+  const COR_REAL  = "#377eb8";
+  const COR_IDEAL = "#4daf4a";
+
+  const chart = Plot.plot({
+    width: W * 2, height: 280,
+    marginLeft: 48, marginRight: 12, marginTop: 12, marginBottom: mbottom,
+    x: { label: null, domain: labels, tickRotate: labels.length > 6 ? -40 : 0 },
+    y: { label: "↑ Passos (Blocos)", grid: true, labelAnchor: "center", labelArrow: "none" },
     marks: [
       Plot.barY(dados, {
-        x: "tipo", y: "passos", fx: "lbl",
-        fill: "tipo", tip: true, rx: 2,
-        title: d => `${d.tipo}\n${d.lbl}: ${d.passos} passos`,
+        x: "lbl", y: "passos",
+        fill: COR_REAL, tip: true, rx: 2,
+        title: d => `${d.lbl}\n${d.passos} blocos`,
       }),
+      ...(idealValor > 0 ? [
+        Plot.ruleY([idealValor], {
+          stroke: COR_IDEAL, strokeWidth: 2, strokeDasharray: "5,3",
+        }),
+        Plot.text([{ x: labels[labels.length - 1], y: idealValor }], {
+          x: "x", y: "y",
+          text: () => `${idealValor} blocos`,
+          dy: -7, fontSize: 10, fill: COR_IDEAL, fontWeight: 600,
+          textAnchor: "end",
+        }),
+      ] : []),
       Plot.ruleY([0]),
     ],
   });
+
+  // Legenda HTML abaixo do gráfico
+  const leg = document.createElement("div");
+  leg.style.cssText = `display:flex;gap:1rem;justify-content:center;margin-top:6px;
+    padding:4px 12px;background:var(--theme-background-alt);
+    border:1px solid var(--theme-foreground-faintest);border-radius:8px;
+    width:fit-content;margin-left:auto;margin-right:auto;`;
+
+  // Barra — Percorrida (Real)
+  { const item = document.createElement("div");
+    item.style.cssText = "display:flex;align-items:center;gap:5px;";
+    const sq = document.createElement("span");
+    sq.style.cssText = `width:12px;height:12px;border-radius:3px;background:${COR_REAL};flex-shrink:0;`;
+    const txt = document.createElement("span");
+    txt.style.cssText = "font-size:.72rem;font-weight:600;color:var(--theme-foreground-muted);white-space:nowrap;";
+    txt.textContent = "Percorrida (Real)";
+    item.append(sq, txt);
+    leg.append(item); }
+
+  // Linha tracejada — Menor Caminho
+  if (idealValor > 0) {
+    const item = document.createElement("div");
+    item.style.cssText = "display:flex;align-items:center;gap:5px;";
+    const svgNS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(svgNS, "svg");
+    svg.setAttribute("width", "20"); svg.setAttribute("height", "12");
+    svg.style.flexShrink = "0";
+    const line = document.createElementNS(svgNS, "line");
+    line.setAttribute("x1", "0"); line.setAttribute("y1", "6");
+    line.setAttribute("x2", "20"); line.setAttribute("y2", "6");
+    line.setAttribute("stroke", COR_IDEAL);
+    line.setAttribute("stroke-width", "2");
+    line.setAttribute("stroke-dasharray", "5,3");
+    svg.append(line);
+    const txt = document.createElement("span");
+    txt.style.cssText = "font-size:.72rem;font-weight:600;color:var(--theme-foreground-muted);white-space:nowrap;";
+    txt.textContent = `Menor Caminho (${idealValor} blocos)`;
+    item.append(svg, txt);
+    leg.append(item);
+  }
+
+  const wrap = document.createElement("div");
+  wrap.style.cssText = "display:flex;flex-direction:column;gap:6px;";
+  wrap.append(chart, leg);
+  return wrap;
 }
 
 // ── Evolução Longitudinal ─────────────────────────────────────────────────────
