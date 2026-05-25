@@ -1,7 +1,7 @@
 // Módulo de autenticação — gerencia token JWT no sessionStorage.
 // Importar em qualquer página protegida com: import { requireAuth, getToken, logout } from "./auth.js";
 
-const API_BASE = "http://127.0.0.1:5000/api";
+const API_BASE = "https://api.omaproject.com.br/api";
 const TOKEN_KEY      = "om_token";
 const USER_KEY       = "om_user";
 const LOGIN_TIME_KEY = "om_login_time";
