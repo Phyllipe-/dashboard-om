@@ -99,7 +99,7 @@ const API_BASE = (location.hostname === "localhost" || location.hostname === "12
   : "https://api.omaproject.com.br/api";
 const E3_BASE = (location.hostname === "localhost" || location.hostname === "127.0.0.1")
   ? "http://localhost:5173"
-  : "https://e3.omaproject.com.br";
+  : "https://app.omaproject.com.br";
 
 const currentUser = requireAuth();
 const headerUser = document.getElementById("header-user");
