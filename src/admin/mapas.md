@@ -94,7 +94,12 @@ toc: false
 import { requireAuth, logout } from "../auth.js";
 import { fetchTodosMaps, fetchMeusMaps, toggleAtivoMapa, apropriarMapa, checkUsoMapa, copiarMapaProprio } from "../api.js";
 
-const API_BASE = "http://127.0.0.1:5000/api";
+const API_BASE = (location.hostname === "localhost" || location.hostname === "127.0.0.1")
+  ? "http://127.0.0.1:5000/api"
+  : "https://api.omaproject.com.br/api";
+const E3_BASE = (location.hostname === "localhost" || location.hostname === "127.0.0.1")
+  ? "http://localhost:5173"
+  : "https://e3.omaproject.com.br";
 
 const currentUser = requireAuth();
 const headerUser = document.getElementById("header-user");
@@ -162,14 +167,21 @@ const meusIdsSet      = new Set(meusMapas.map(m => m.id_mapa));
 const minhasOrigensSet = new Set(meusMapas.filter(m => m.id_mapa_original).map(m => m.id_mapa_original));
 
 // --- Download ---
-function baixarMapa(mapa) {
+async function baixarMapa(mapa) {
   const token = sessionStorage.getItem("om_token");
+  const response = await fetch(`${API_BASE}/treinos/mapas/${mapa.id_mapa}/download`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) { alert("Erro ao baixar mapa."); return; }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = `${API_BASE}/treinos/mapas/${mapa.id_mapa}/download?token=${encodeURIComponent(token)}`;
+  a.href = url;
   a.download = `${mapa.nome_mapa}.xml`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // --- Badge de origem ---
@@ -323,7 +335,7 @@ async function editarMapa(mapa, btnEditar) {
   }
 
   const token = sessionStorage.getItem("om_token");
-  const e3Url = id => `http://localhost:5173/?mode=edit&id=${id}&token=${encodeURIComponent(token)}`;
+  const e3Url = id => `${E3_BASE}/?mode=edit&id=${id}&token=${encodeURIComponent(token)}`;
 
   // Cenário 1 — mapa em atividade ATIVA
   if (uso.em_atividade_ativa) {
@@ -459,7 +471,7 @@ renderMeus();
 display(html`<div>
   <div class="page-header">
     <h1>Mapas</h1>
-    <a class="btn btn-primary ext-link" href="http://localhost:5173/" target="_blank" rel="noopener">Criar novo mapa (Editor-E3)</a>
+    <a class="btn btn-primary ext-link" id="btn-novo-mapa" href="#" target="_blank" rel="noopener">Criar novo mapa (Editor-E3)</a>
   </div>
 
   <div class="stats-bar">${statTotal}${statMeus}${statAtivos}</div>
@@ -468,4 +480,6 @@ display(html`<div>
   ${panelTodos}
   ${panelMeus}
 </div>`);
+
+document.getElementById("btn-novo-mapa").href = `${E3_BASE}/`;
 ```

@@ -1,7 +1,9 @@
 // Helpers para chamadas autenticadas à api-om.
 // Uso: import { apiFetch } from "./api.js";
 
-const API_BASE = "http://127.0.0.1:5000/api";
+const API_BASE = (location.hostname === "localhost" || location.hostname === "127.0.0.1")
+  ? "http://127.0.0.1:5000/api"
+  : "https://api.omaproject.com.br/api";
 
 /**
  * Faz uma chamada autenticada à API.
@@ -248,4 +250,26 @@ export function fetchMetricas(id_log) {
 /** GET /api/analises/aluno/:id/metricas — média de todas as sessões do aluno */
 export function fetchMetricasAluno(id_aluno) {
   return apiFetch(`/analises/aluno/${id_aluno}/metricas`);
+}
+
+// --- Quadros ---
+
+/** GET /api/quadros/ — catálogo completo de quadros */
+export function fetchQuadros() {
+  return apiFetch("/quadros/");
+}
+
+/** PATCH /api/quadros/:id — edita nome, ativo_padrao, personalizavel (admin) */
+export function editarQuadro(id, dados) {
+  return apiFetch(`/quadros/${id}`, { method: "PATCH", body: JSON.stringify(dados) });
+}
+
+/** GET /api/quadros/preferencias/ — preferências do usuário logado */
+export function fetchPreferenciasQuadros() {
+  return apiFetch("/quadros/preferencias/");
+}
+
+/** PATCH /api/quadros/preferencias/ — salva preferências do usuário logado */
+export function salvarPreferenciasQuadros(preferencias) {
+  return apiFetch("/quadros/preferencias/", { method: "PATCH", body: JSON.stringify(preferencias) });
 }

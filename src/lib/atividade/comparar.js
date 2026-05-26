@@ -278,10 +278,14 @@ export function graficoParaleloMultimetrica(dados) {
     (a, b) => (mediaMetricas(a.metricas) ?? 0) - (mediaMetricas(b.metricas) ?? 0)
   );
 
+  const lineEls = new Map();
+  const dotEls  = new Map();
+  const defaultAlpha = comMetricas.length > 6 ? 0.45 : 0.7;
+  const defaultSW    = comMetricas.length > 10 ? "1.2" : "1.8";
+
   for (const d of ordenados) {
     const media = mediaMetricas(d.metricas) ?? 0;
     const cor   = media >= 70 ? "#166534" : media >= 40 ? "#854d0e" : "#991b1b";
-    const alpha = comMetricas.length > 6 ? 0.45 : 0.7;
 
     const pts = METRICAS.map((m, i) => {
       const v = d.metricas[m.chave] ?? 0;
@@ -292,8 +296,8 @@ export function graficoParaleloMultimetrica(dados) {
     poly.setAttribute("points", pts);
     poly.setAttribute("fill", "none");
     poly.setAttribute("stroke", cor);
-    poly.setAttribute("stroke-width", comMetricas.length > 10 ? "1.2" : "1.8");
-    poly.setAttribute("stroke-opacity", alpha);
+    poly.setAttribute("stroke-width", defaultSW);
+    poly.setAttribute("stroke-opacity", defaultAlpha);
 
     const title = document.createElementNS(ns, "title");
     title.textContent = [
@@ -303,9 +307,11 @@ export function graficoParaleloMultimetrica(dados) {
     ].join("\n");
     poly.append(title);
     svg.append(poly);
+    lineEls.set(d.aluno.nome_completo, poly);
 
-    // Pontos nos eixos (omitir se muitos alunos)
+    // Pontos nos eixos
     if (comMetricas.length <= 10) {
+      const dots = [];
       METRICAS.forEach((m, i) => {
         const v = d.metricas[m.chave] ?? 0;
         const dot = document.createElementNS(ns, "circle");
@@ -314,8 +320,26 @@ export function graficoParaleloMultimetrica(dados) {
         dot.setAttribute("fill", cor); dot.setAttribute("fill-opacity", "0.8");
         dot.setAttribute("stroke", "white"); dot.setAttribute("stroke-width", "1");
         svg.append(dot);
+        dots.push(dot);
       });
+      dotEls.set(d.aluno.nome_completo, dots);
     }
+  }
+
+  function highlightParalelo(nome) {
+    lineEls.forEach((poly, n) => {
+      if (!nome || n === nome) {
+        poly.setAttribute("stroke-opacity", n === nome ? "0.9" : defaultAlpha);
+        poly.setAttribute("stroke-width",   n === nome ? "3"   : defaultSW);
+        if (n === nome) poly.parentNode?.appendChild(poly);
+      } else {
+        poly.setAttribute("stroke-opacity", "0.07");
+        poly.setAttribute("stroke-width", defaultSW);
+      }
+    });
+    dotEls.forEach((dots, n) => {
+      dots.forEach(dot => dot.setAttribute("fill-opacity", !nome || n === nome ? "0.8" : "0.07"));
+    });
   }
 
   // ── Eixos verticais + ticks + labels ─────────────────────────────────────
@@ -395,7 +419,7 @@ export function graficoParaleloMultimetrica(dados) {
 
   const wrap = document.createElement("div");
   wrap.append(svg, footer);
-  return wrap;
+  return { el: wrap, highlight: highlightParalelo };
 }
 
 // ── Gráfico 2e: Comparação de métricas — Radar ───────────────────────────────
@@ -726,20 +750,13 @@ export function graficoWaffleMultimetrica(dados, Plot) {
   });
 }
 
-// ── Gráfico 3b: Progresso — Bullet Graph ─────────────────────────────────────
-/**
- * Bullet graph por aluno:
- *   - Faixas de fundo: Atenção (0–40%), Regular (40–70%), Bom (70–100%)
- *   - Barra principal: Média Geral do aluno (Precisão + Objetivos + Fluidez)
- *   - Marcador (linha vertical): 70% — meta de referência
- * Ordenado por média decrescente.
- */
-export function graficoBulletProgresso(dados) {
+// ── Gráfico 3b: Progresso — Bullet Graph (horizontal) ────────────────────────
+export function graficoBulletProgresso(dados, onSelect) {
   const rows = dados
     .filter(d => d.metricas)
     .map(d => ({
-      nome:  d.aluno.nome_completo,
-      media: mediaMetricas(d.metricas) ?? 0,
+      nome:      d.aluno.nome_completo,
+      media:     mediaMetricas(d.metricas) ?? 0,
       precisao:  d.metricas.precisao  ?? 0,
       objetivos: d.metricas.objetivos ?? 0,
       fluidez:   d.metricas.fluidez   ?? 0,
@@ -748,117 +765,136 @@ export function graficoBulletProgresso(dados) {
 
   if (!rows.length) return null;
 
-  const COL_W  = 48;   // largura por aluno
-  const TOP    = 24;   // margem topo (rótulo de valor)
-  const BOTTOM = 72;   // margem inferior (nome + ticks)
-  const LEFT   = 38;   // margem esquerda (eixo Y)
-  const RIGHT  = 10;
-  const BAR_W  = 16;   // largura da barra principal
-  const BAND_W = 26;   // largura das faixas de fundo
-  const META   = 70;   // marcador de referência (%)
-  const innerH = 210;
-  const W      = rows.length * COL_W + LEFT + RIGHT;
-  const H      = TOP + innerH + BOTTOM;
+  const NAME_W  = 220;
+  const INNER_W = 280;
+  const LABEL_W = 84;
+  const TOP     = 8;
+  const BOTTOM  = 28;
+  const W       = NAME_W + INNER_W + LABEL_W;
+  const ROW_H   = Math.min(112, Math.round((680 - TOP - BOTTOM) / rows.length));
+  const BAR_H   = Math.round(ROW_H * 0.85);
+  const H       = TOP + rows.length * ROW_H + BOTTOM;
 
-  const ns = "http://www.w3.org/2000/svg";
+  const valX = (pct) => NAME_W + (pct / 100) * INNER_W;
 
-  // Y: 0% → base, 100% → topo
-  const valY = pct => TOP + innerH * (1 - pct / 100);
-
+  const ns  = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(ns, "svg");
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   svg.setAttribute("width", W);
   svg.setAttribute("height", H);
-  svg.style.cssText = "display:block;overflow:visible;font-family:inherit;";
+  svg.style.cssText = "display:block;overflow:visible;font-family:system-ui,sans-serif;";
 
   const bands = [
-    { y1: 0,   y2: 40,  fill: "#fee2e2", label: "Atenção" },
-    { y1: 40,  y2: 70,  fill: "#fef9c3", label: "Regular" },
-    { y1: 70,  y2: 100, fill: "#dcfce7", label: "Bom"     },
+    { x1: 0,  x2: 40,  fill: "#fee2e2", label: "Atenção" },
+    { x1: 40, x2: 70,  fill: "#fef9c3", label: "Regular" },
+    { x1: 70, x2: 100, fill: "#dcfce7", label: "Bom"     },
   ];
 
-  // ── Eixo Y: ticks e linhas de grade ──────────────────────────────────────────
+  for (const b of bands) {
+    const rect = document.createElementNS(ns, "rect");
+    rect.setAttribute("x", NAME_W + (b.x1 / 100) * INNER_W);
+    rect.setAttribute("y", TOP);
+    rect.setAttribute("width", ((b.x2 - b.x1) / 100) * INNER_W);
+    rect.setAttribute("height", rows.length * ROW_H);
+    rect.setAttribute("fill", b.fill);
+    rect.setAttribute("fill-opacity", "0.5");
+    svg.append(rect);
+  }
+
   for (const tick of [0, 40, 70, 100]) {
-    const ty = valY(tick);
+    const tx     = valX(tick);
+    const isMeta = tick === 70;
+
     const gl = document.createElementNS(ns, "line");
-    gl.setAttribute("x1", LEFT); gl.setAttribute("x2", LEFT + rows.length * COL_W);
-    gl.setAttribute("y1", ty); gl.setAttribute("y2", ty);
-    gl.setAttribute("stroke", "#e5e7eb"); gl.setAttribute("stroke-width", "1");
+    gl.setAttribute("x1", tx); gl.setAttribute("x2", tx);
+    gl.setAttribute("y1", TOP); gl.setAttribute("y2", TOP + rows.length * ROW_H);
+    gl.setAttribute("stroke", isMeta ? "#1a3a5c" : "#e5e7eb");
+    gl.setAttribute("stroke-width", isMeta ? "2" : "1");
+    if (isMeta) gl.setAttribute("stroke-dasharray", "4,3");
     svg.append(gl);
+
     const tl = document.createElementNS(ns, "text");
-    tl.setAttribute("x", LEFT - 4); tl.setAttribute("y", ty + 4);
-    tl.setAttribute("text-anchor", "end"); tl.setAttribute("font-size", "9");
-    tl.setAttribute("fill", "#aaa");
+    tl.setAttribute("x", tx);
+    tl.setAttribute("y", TOP + rows.length * ROW_H + 16);
+    tl.setAttribute("text-anchor", "middle");
+    tl.setAttribute("font-size", "14");
+    tl.setAttribute("fill", isMeta ? "#1a3a5c" : "#aaa");
+    if (isMeta) tl.setAttribute("font-weight", "700");
     tl.textContent = `${tick}%`;
     svg.append(tl);
   }
 
-  // ── Bullet por aluno ──────────────────────────────────────────────────────────
-  rows.forEach((r, i) => {
-    const cx = LEFT + i * COL_W + COL_W / 2;
-    const cor = r.media >= 70 ? "#166534" : r.media >= 40 ? "#854d0e" : "#991b1b";
+  const barEls  = new Map();
+  const nomeEls = new Map();
+  const lblEls  = new Map();
+  let currentSelected = null;
 
-    // Faixas de fundo
-    for (const b of bands) {
-      const by = valY(b.y2);
-      const bh = valY(b.y1) - valY(b.y2);
-      const rect = document.createElementNS(ns, "rect");
-      rect.setAttribute("x", cx - BAND_W / 2); rect.setAttribute("y", by);
-      rect.setAttribute("width", BAND_W); rect.setAttribute("height", bh);
-      rect.setAttribute("fill", b.fill);
-      svg.append(rect);
-    }
+  function highlight(nome) {
+    currentSelected = nome;
+    barEls.forEach((bar, n) => {
+      bar.setAttribute("opacity", !nome || n === nome ? "1" : "0.18");
+      bar.setAttribute("stroke", n === nome ? "#1a3a5c" : "none");
+      bar.setAttribute("stroke-width", "2");
+    });
+    nomeEls.forEach((el, n) => el.setAttribute("opacity", !nome || n === nome ? "1" : "0.18"));
+    lblEls.forEach((el, n)  => el.setAttribute("opacity", !nome || n === nome ? "1" : "0.18"));
+  }
 
-    // Borda das faixas
-    const border = document.createElementNS(ns, "rect");
-    border.setAttribute("x", cx - BAND_W / 2); border.setAttribute("y", valY(100));
-    border.setAttribute("width", BAND_W); border.setAttribute("height", innerH);
-    border.setAttribute("fill", "none");
-    border.setAttribute("stroke", "rgba(0,0,0,.08)"); border.setAttribute("stroke-width", "1");
-    svg.append(border);
+  rows.forEach((r, rowIdx) => {
+    const cy       = TOP + rowIdx * ROW_H + ROW_H / 2;
+    const barColor = r.media >= 70 ? "#5ba85b" : r.media >= 40 ? "#e6a817" : "#e07b54";
 
-    // Barra principal (média)
-    const barH = valY(0) - valY(r.media);
+    const nomeEl = document.createElementNS(ns, "text");
+    nomeEl.setAttribute("x", NAME_W - 8);
+    nomeEl.setAttribute("y", cy + 5);
+    nomeEl.setAttribute("text-anchor", "end");
+    nomeEl.setAttribute("font-size", "14");
+    nomeEl.setAttribute("fill", "var(--theme-foreground)");
+    nomeEl.textContent = r.nome.length > 13 ? r.nome.slice(0, 12) + "…" : r.nome;
+    svg.append(nomeEl);
+    nomeEls.set(r.nome, nomeEl);
+
     const bar = document.createElementNS(ns, "rect");
-    bar.setAttribute("x", cx - BAR_W / 2); bar.setAttribute("y", valY(r.media));
-    bar.setAttribute("width", BAR_W); bar.setAttribute("height", barH);
-    bar.setAttribute("fill", cor); bar.setAttribute("rx", "2");
-    svg.append(bar);
-
-    // Marcador de meta (70%) — linha horizontal
-    const my = valY(META);
-    const mark = document.createElementNS(ns, "line");
-    mark.setAttribute("x1", cx - BAND_W / 2 - 2); mark.setAttribute("x2", cx + BAND_W / 2 + 2);
-    mark.setAttribute("y1", my); mark.setAttribute("y2", my);
-    mark.setAttribute("stroke", "#1a3a5c"); mark.setAttribute("stroke-width", "2.5");
-    svg.append(mark);
-
-    // Rótulo de valor (acima da barra)
-    const lbl = document.createElementNS(ns, "text");
-    lbl.setAttribute("x", cx); lbl.setAttribute("y", valY(r.media) - 4);
-    lbl.setAttribute("text-anchor", "middle"); lbl.setAttribute("font-size", "10");
-    lbl.setAttribute("font-weight", "600"); lbl.setAttribute("fill", cor);
-    lbl.textContent = `${r.media.toFixed(1)}%`;
-    svg.append(lbl);
-
-    // Nome (baixo, rotacionado)
-    const nome = document.createElementNS(ns, "text");
-    nome.setAttribute("x", cx); nome.setAttribute("y", TOP + innerH + 10);
-    nome.setAttribute("text-anchor", "end");
-    nome.setAttribute("font-size", "11"); nome.setAttribute("fill", "var(--theme-foreground)");
-    nome.setAttribute("transform", `rotate(-35, ${cx}, ${TOP + innerH + 10})`);
-    nome.textContent = r.nome.length > 16 ? r.nome.slice(0, 15) + "…" : r.nome;
-    svg.append(nome);
-
-    // Tooltip
+    bar.setAttribute("x", NAME_W);
+    bar.setAttribute("y", cy - BAR_H / 2);
+    bar.setAttribute("width", (r.media / 100) * INNER_W);
+    bar.setAttribute("height", BAR_H);
+    bar.setAttribute("fill", barColor);
+    bar.setAttribute("rx", "2");
     const title = document.createElementNS(ns, "title");
     title.textContent = `${r.nome}\nMédia: ${r.media.toFixed(1)}%\nPrecisão: ${r.precisao.toFixed(1)}%  Objetivos: ${r.objetivos.toFixed(1)}%  Fluidez: ${r.fluidez.toFixed(1)}%`;
-    svg.append(title);
+    bar.append(title);
+    svg.append(bar);
+    barEls.set(r.nome, bar);
+
+    const lbl = document.createElementNS(ns, "text");
+    lbl.setAttribute("x", NAME_W + (r.media / 100) * INNER_W + 5);
+    lbl.setAttribute("y", cy + 5);
+    lbl.style.fontSize = "10px";
+    lbl.setAttribute("fill", "var(--theme-foreground-muted)");
+    lbl.textContent = `${r.media.toFixed(1)}%`;
+    svg.append(lbl);
+    lblEls.set(r.nome, lbl);
+
+    // Área clicável cobrindo toda a linha
+    const hit = document.createElementNS(ns, "rect");
+    hit.setAttribute("x", "0");
+    hit.setAttribute("y", cy - ROW_H / 2);
+    hit.setAttribute("width", W);
+    hit.setAttribute("height", ROW_H);
+    hit.setAttribute("fill", "transparent");
+    hit.style.cursor = "pointer";
+    hit.addEventListener("click", () => {
+      const next = currentSelected === r.nome ? null : r.nome;
+      highlight(next);
+      if (onSelect) onSelect(next);
+    });
+    svg.append(hit);
   });
 
-  // ── Legenda no rodapé (DOM) ───────────────────────────────────────────────────
+  // ── Legenda no rodapé ─────────────────────────────────────────────────────
   const footer = document.createElement("div");
-  footer.style.cssText = "display:flex;flex-wrap:wrap;gap:10px 18px;margin-top:6px;font-size:12px;color:#555;";
+  footer.style.cssText = "display:flex;flex-wrap:wrap;gap:10px 18px;margin-top:6px;font-size:14px;color:#555;";
   for (const b of bands) {
     const item = document.createElement("span");
     item.style.cssText = "display:inline-flex;align-items:center;gap:5px;";
@@ -870,12 +906,167 @@ export function graficoBulletProgresso(dados) {
   const metaItem = document.createElement("span");
   metaItem.style.cssText = "display:inline-flex;align-items:center;gap:5px;";
   const metaLine = document.createElement("span");
-  metaLine.style.cssText = "display:inline-block;width:14px;height:2px;background:#1a3a5c;flex-shrink:0;";
+  metaLine.style.cssText = "display:inline-block;width:2px;height:12px;background:#1a3a5c;flex-shrink:0;";
   metaItem.append(metaLine, "Meta (70%)");
   footer.append(metaItem);
 
   const wrap = document.createElement("div");
-  wrap.style.cssText = "overflow-x:auto;";
+  wrap.append(svg, footer);
+  return { el: wrap, highlight };
+}
+
+// ── Gráfico Ternário ──────────────────────────────────────────────────────────
+/**
+ * Triângulo equilátero onde cada vértice = 100% de uma métrica.
+ * Posição do ponto revela o perfil relativo do aluno:
+ * perto de um vértice → forte naquela métrica em relação às demais.
+ * Os valores são normalizados pela soma (Precisão + Objetivos + Fluidez).
+ */
+export function graficoTernario(dados) {
+  const rows = dados
+    .filter(d => d.metricas)
+    .map(d => ({
+      nome:      d.aluno.nome_completo,
+      media:     mediaMetricas(d.metricas) ?? 0,
+      precisao:  d.metricas.precisao  ?? 0,
+      objetivos: d.metricas.objetivos ?? 0,
+      fluidez:   d.metricas.fluidez   ?? 0,
+    }));
+
+  if (!rows.length) return null;
+
+  const SIDE = 370;
+  const ML = 80, MR = 80, MT = 58, MB = 48;
+  const W  = SIDE + ML + MR;
+  const H  = Math.round(SIDE * Math.sqrt(3) / 2) + MT + MB;
+
+  // Vértices SVG: A = Precisão (esq), B = Objetivos (dir), C = Fluidez (topo)
+  const vA = [ML,            H - MB];
+  const vB = [ML + SIDE,     H - MB];
+  const vC = [ML + SIDE / 2, MT];
+
+  function bary(a, b, c) {
+    const S = (a + b + c) || 1;
+    return [
+      (a / S) * vA[0] + (b / S) * vB[0] + (c / S) * vC[0],
+      (a / S) * vA[1] + (b / S) * vB[1] + (c / S) * vC[1],
+    ];
+  }
+
+  const ns  = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.setAttribute("width",  W);
+  svg.setAttribute("height", H);
+  svg.style.cssText = "display:block;overflow:visible;font-family:system-ui,sans-serif;";
+
+  function mkLine(p1, p2, stroke, sw, dash) {
+    const el = document.createElementNS(ns, "line");
+    el.setAttribute("x1", p1[0]); el.setAttribute("y1", p1[1]);
+    el.setAttribute("x2", p2[0]); el.setAttribute("y2", p2[1]);
+    el.setAttribute("stroke", stroke);
+    el.setAttribute("stroke-width", sw);
+    if (dash) el.setAttribute("stroke-dasharray", dash);
+    return el;
+  }
+
+  function mkText(x, y, str, anchor, size, fill, weight) {
+    const el = document.createElementNS(ns, "text");
+    el.setAttribute("x", x); el.setAttribute("y", y);
+    el.setAttribute("text-anchor", anchor);
+    el.setAttribute("font-size", size);
+    el.setAttribute("fill", fill);
+    if (weight) el.setAttribute("font-weight", weight);
+    el.textContent = str;
+    return el;
+  }
+
+  // ── Fundo do triângulo ────────────────────────────────────────────────────
+  const bg = document.createElementNS(ns, "polygon");
+  bg.setAttribute("points", [vA, vB, vC].map(v => v.join(",")).join(" "));
+  bg.setAttribute("fill",         "#f9fafb");
+  bg.setAttribute("stroke",       "#9ca3af");
+  bg.setAttribute("stroke-width", "1.5");
+  svg.append(bg);
+
+  // ── Grade e ticks em 25 / 50 / 75 % ──────────────────────────────────────
+  for (const t of [0.25, 0.5, 0.75]) {
+    const col = t === 0.5 ? "#d1d5db" : "#e5e7eb";
+    const sw  = t === 0.5 ? "1"       : "0.6";
+    const pct = String(Math.round(t * 100));
+
+    // Precisão = t → paralela a BC
+    svg.append(mkLine(bary(t, 1 - t, 0), bary(t, 0, 1 - t), col, sw));
+    // Objetivos = t → paralela a AC
+    svg.append(mkLine(bary(1 - t, t, 0), bary(0, t, 1 - t), col, sw));
+    // Fluidez = t   → paralela a AB
+    svg.append(mkLine(bary(1 - t, 0, t), bary(0, 1 - t, t), col, sw));
+
+    // Ticks: Precisão no lado esquerdo (AC: a=t, b=0, c=1-t)
+    const [lx, ly] = bary(t, 0, 1 - t);
+    svg.append(mkText(lx - 6, ly + 4, pct, "end", "9", "#aaa"));
+
+    // Ticks: Objetivos no lado inferior (AB: a=1-t, b=t, c=0)
+    const [bx, by] = bary(1 - t, t, 0);
+    svg.append(mkText(bx, by + 14, pct, "middle", "9", "#aaa"));
+
+    // Ticks: Fluidez no lado direito (BC: a=0, b=1-t, c=t)
+    const [rx, ry] = bary(0, 1 - t, t);
+    svg.append(mkText(rx + 6, ry + 4, pct, "start", "9", "#aaa"));
+  }
+
+  // ── Labels dos vértices ───────────────────────────────────────────────────
+  svg.append(mkText(vA[0] - 10, vA[1] + 5,  "Precisão",  "end",    "13", "var(--theme-foreground)", "700"));
+  svg.append(mkText(vA[0] - 10, vA[1] + 18, "100%",      "end",    "9",  "#888"));
+  svg.append(mkText(vB[0] + 10, vB[1] + 5,  "Objetivos", "start",  "13", "var(--theme-foreground)", "700"));
+  svg.append(mkText(vB[0] + 10, vB[1] + 18, "100%",      "start",  "9",  "#888"));
+  svg.append(mkText(vC[0],      vC[1] - 13, "Fluidez",   "middle", "13", "var(--theme-foreground)", "700"));
+  svg.append(mkText(vC[0],      vC[1] - 25, "100%",      "middle", "9",  "#888"));
+
+  // ── Centroide de referência (1/3, 1/3, 1/3) ───────────────────────────────
+  const [cx, cy] = bary(1, 1, 1);
+  const cRef = document.createElementNS(ns, "circle");
+  cRef.setAttribute("cx", cx); cRef.setAttribute("cy", cy); cRef.setAttribute("r", "3");
+  cRef.setAttribute("fill", "none"); cRef.setAttribute("stroke", "#9ca3af");
+  cRef.setAttribute("stroke-width", "1"); cRef.setAttribute("stroke-dasharray", "2,2");
+  svg.append(cRef);
+  svg.append(mkText(cx + 5, cy - 5, "equil.", "start", "8", "#bbb"));
+
+  // ── Pontos dos alunos ─────────────────────────────────────────────────────
+  for (const r of rows) {
+    const [px, py] = bary(r.precisao, r.objetivos, r.fluidez);
+    const cor = r.media >= 70 ? "#166534" : r.media >= 40 ? "#854d0e" : "#991b1b";
+
+    const dot = document.createElementNS(ns, "circle");
+    dot.setAttribute("cx", px); dot.setAttribute("cy", py); dot.setAttribute("r", "7");
+    dot.setAttribute("fill", cor); dot.setAttribute("stroke", "white"); dot.setAttribute("stroke-width", "1.5");
+    const title = document.createElementNS(ns, "title");
+    title.textContent = `${r.nome}\nPrecisão: ${r.precisao.toFixed(1)}%\nObjetivos: ${r.objetivos.toFixed(1)}%\nFluidez: ${r.fluidez.toFixed(1)}%\nMédia: ${r.media.toFixed(1)}%`;
+    dot.append(title);
+    svg.append(dot);
+
+    const lbl = document.createElementNS(ns, "text");
+    lbl.setAttribute("x", px); lbl.setAttribute("y", py - 11);
+    lbl.setAttribute("text-anchor", "middle");
+    lbl.setAttribute("font-size", "10"); lbl.setAttribute("font-weight", "600");
+    lbl.setAttribute("fill", cor);
+    lbl.textContent = r.nome.split(" ")[0];
+    svg.append(lbl);
+  }
+
+  // ── Legenda ───────────────────────────────────────────────────────────────
+  const footer = document.createElement("div");
+  footer.style.cssText = "display:flex;flex-wrap:wrap;gap:10px 18px;margin-top:8px;font-size:12px;color:#555;";
+  for (const [cor, lbl] of [["#166534","Bom (≥ 70%)"], ["#854d0e","Regular (40–70%)"], ["#991b1b","Atenção (< 40%)"]]) {
+    const item = document.createElement("span");
+    item.style.cssText = "display:inline-flex;align-items:center;gap:5px;";
+    const dot = document.createElement("span");
+    dot.style.cssText = `width:10px;height:10px;border-radius:50%;background:${cor};flex-shrink:0;`;
+    item.append(dot, lbl);
+    footer.append(item);
+  }
+
+  const wrap = document.createElement("div");
   wrap.append(svg, footer);
   return wrap;
 }
@@ -948,9 +1139,12 @@ export function tabelaHeatmap(dados) {
 
   // Corpo
   const tbody = table.createTBody();
+  const rowEls = new Map();
   rows.forEach((r, i) => {
     const tr = tbody.insertRow();
     tr.style.background = i % 2 === 0 ? "transparent" : "rgba(0,0,0,.02)";
+    tr.style.cursor = "default";
+    rowEls.set(r.nome, tr);
 
     // Nome
     const tdNome = tr.insertCell();
@@ -975,11 +1169,19 @@ export function tabelaHeatmap(dados) {
     tdFin.append(badge);
   });
 
+  function highlightTable(nome) {
+    rowEls.forEach((tr, n) => {
+      tr.style.opacity = !nome || n === nome ? "1" : "0.2";
+      tr.style.outline = n === nome ? "2px solid #1a3a5c" : "";
+      tr.style.outlineOffset = "-1px";
+    });
+  }
+
   const scrollWrap = document.createElement("div");
   scrollWrap.style.overflowX = "auto";
   scrollWrap.append(table);
 
   const wrap = document.createElement("div");
   wrap.append(legWrap, scrollWrap);
-  return wrap;
+  return { el: wrap, highlight: highlightTable };
 }
