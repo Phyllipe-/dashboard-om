@@ -64,7 +64,9 @@ const params   = new URLSearchParams(location.search);
 const id_log   = parseInt(params.get("id"));
 const id_aluno = params.get("aluno");
 
-const API_BASE = "http://127.0.0.1:5000/api";
+const API_BASE = (location.hostname === "localhost" || location.hostname === "127.0.0.1")
+  ? "http://127.0.0.1:5000/api"
+  : "https://api.omaproject.com.br/api";
 
 if (!id_log) {
   display(html`<p style="color:#b91c1c">ID de sessão não informado.</p>`);
@@ -197,9 +199,12 @@ const painelMiniCorpo = document.createElement("div"); painelMiniCorpo.className
 const miniWrap = document.createElement("div"); miniWrap.className = "img-wrap";
 if (sessao.tem_minimap && sessao.caminho_minimap) {
   const img = document.createElement("img");
-  img.src = `${API_BASE}/treinos/arquivos${sessao.caminho_minimap}?token=${token}`;
   img.alt = "Minimap";
   img.loading = "lazy";
+  fetch(`${API_BASE}/treinos/arquivos${sessao.caminho_minimap}`, { headers: { Authorization: `Bearer ${token}` } })
+    .then(r => r.ok ? r.blob() : null)
+    .then(blob => { if (blob) img.src = URL.createObjectURL(blob); })
+    .catch(() => {});
   miniWrap.append(img);
 } else {
   miniWrap.innerHTML = `<div class="img-placeholder">Minimap não disponível</div>`;
@@ -214,9 +219,12 @@ const painelRenderCorpo = document.createElement("div"); painelRenderCorpo.class
 const renderWrap = document.createElement("div"); renderWrap.className = "img-wrap";
 if (sessao.render_3d) {
   const img = document.createElement("img");
-  img.src = `${API_BASE}/treinos/mapas/${sessao.id_mapa}/render3d?token=${token}`;
   img.alt = "Render 3D";
   img.loading = "lazy";
+  fetch(`${API_BASE}/treinos/mapas/${sessao.id_mapa}/render3d`, { headers: { Authorization: `Bearer ${token}` } })
+    .then(r => r.ok ? r.blob() : null)
+    .then(blob => { if (blob) img.src = URL.createObjectURL(blob); })
+    .catch(() => {});
   renderWrap.append(img);
 } else {
   renderWrap.innerHTML = `<div class="img-placeholder">Render 3D não disponível</div>`;

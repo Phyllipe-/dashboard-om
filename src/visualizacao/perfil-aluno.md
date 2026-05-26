@@ -3523,7 +3523,8 @@ async function carregarMapaGiros(id_log) {
         const partes  = caminhoXml.replace(/^\//, "").split("/");
         const pasta   = partes[0];
         const arquivo = partes.slice(1).join("/");
-        const xmlResp = await fetch(`http://127.0.0.1:5000/api/treinos/arquivos/${pasta}/${arquivo}?token=${token}`);
+        const _apiBase = (location.hostname === "localhost" || location.hostname === "127.0.0.1") ? "http://127.0.0.1:5000/api" : "https://api.omaproject.com.br/api";
+        const xmlResp = await fetch(`${_apiBase}/treinos/arquivos/${pasta}/${arquivo}`, { headers: { Authorization: `Bearer ${token}` } });
         if (xmlResp.ok) {
           const xmlText = await xmlResp.text();
           const parsed  = parseMapaXML(xmlText);
@@ -4084,7 +4085,8 @@ async function atualizarDetalhesPorMapa() {
         const token = sessionStorage.getItem("om_token");
         const partes = sc.nomeArquivoXml.replace(/^\//, "").split("/");
         const pasta = partes[0], arquivo = partes.slice(1).join("/");
-        const resp = await fetch(`http://127.0.0.1:5000/api/treinos/arquivos/${pasta}/${arquivo}?token=${token}`);
+        const _apiBase = (location.hostname === "localhost" || location.hostname === "127.0.0.1") ? "http://127.0.0.1:5000/api" : "https://api.omaproject.com.br/api";
+        const resp = await fetch(`${_apiBase}/treinos/arquivos/${pasta}/${arquivo}`, { headers: { Authorization: `Bearer ${token}` } });
         if (resp.ok) { mapaRaw = parseMapaXML(await resp.text()); mapaRawCache2.set(cacheKey, mapaRaw); break; }
       } catch(e) { console.warn("falha ao carregar XML:", e); }
     }

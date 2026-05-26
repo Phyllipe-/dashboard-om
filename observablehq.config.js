@@ -182,7 +182,9 @@ export default {
   </style>
 
   <script>
-    const _API = 'http://127.0.0.1:5000/api';
+    const _API = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+      ? 'http://127.0.0.1:5000/api'
+      : 'https://api.omaproject.com.br/api';
     let _persData   = [];  // quadros do catálogo com preferências mescladas
     let _persState  = {};  // chave -> visivel
     let _orderState = {};  // secao -> [chave, chave, ...]
