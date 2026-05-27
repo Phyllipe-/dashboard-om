@@ -1,96 +1,135 @@
-# Dashboard OM — Orientação e Mobilidade
+# dashboard-om
 
-Dashboard administrativo para o sistema de **Orientação e Mobilidade (OM)**, construído com [Observable Framework](https://observablehq.com/framework/). Permite que professores gerenciem alunos, mapas e atividades, e visualizem métricas de sessões de treino.
+Dashboard administrativo do **OMA Project** (Orientação e Mobilidade). Permite que professores gerenciem alunos, mapas e atividades, e visualizem análises das sessões de treino.
 
-Requer a [api-om](https://github.com/Phyllipe-/api-om) em execução.
+Construído com [Observable Framework](https://observablehq.com/framework/) — gera um site estático a partir de arquivos `.md` com JavaScript.
 
----
+Requer a [api-om](../api-om) em execução.
 
 ## Tecnologias
 
 | Camada | Tecnologia |
 |---|---|
-| Framework | [Observable Framework](https://observablehq.com/framework/) |
+| Framework | Observable Framework 1.x |
 | Linguagem | JavaScript ES Modules |
-| Autenticação | JWT armazenado em `sessionStorage` |
-| Backend | [api-om](https://github.com/Phyllipe-/api-om) (Flask + PostgreSQL) |
+| Autenticação | JWT em `sessionStorage` (não persiste entre abas) |
+| Testes | Vitest 2 |
+| Deploy | Nginx (Hetzner) via GitHub Actions |
 
----
+## Pré-requisitos
 
-## Estrutura do projeto
+- Node.js 18+
+- [api-om](../api-om) rodando localmente
 
-```
-dashboard-om/
-├── src/
-│   ├── auth.js                       # Gerenciamento de sessão JWT
-│   ├── api.js                        # Funções de acesso à api-om
-│   ├── login.md                      # Página de login
-│   ├── index.md                      # Página inicial
-│   ├── admin/
-│   │   ├── alunos.md                 # Lista e gerencia alunos
-│   │   ├── cadastrar-aluno.md        # Formulário de cadastro de aluno
-│   │   ├── editar-aluno.md           # Edição de dados do aluno
-│   │   ├── professores.md            # Lista professores (admin)
-│   │   ├── cadastrar-professor.md    # Formulário de cadastro de professor
-│   │   ├── editar-professor.md       # Edição de dados do professor (admin)
-│   │   ├── mapas.md                  # Gerencia mapas
-│   │   ├── atividades.md             # Lista atividades
-│   │   └── criar-atividade.md        # Criação de atividade
-│   └── visualizacao/
-│       ├── alunos.md                 # Lista geral de alunos
-│       ├── dados-aluno.md            # Dados e sessões de um aluno
-│       └── perfil-aluno.md           # Perfil geral do aluno
-├── observablehq.config.js            # Navegação e configuração do app
-└── package.json
-```
-
----
-
-## Controle de acesso
-
-| Perfil | Permissões |
-|---|---|
-| **Professor** | Gerencia seus próprios alunos, mapas e atividades; visualiza métricas |
-| **Administrador** (`id_usuario = 1`) | Acesso total, incluindo gerenciamento de professores |
-
----
-
-## Configuração
-
-### Pré-requisitos
-
-- Node.js v20.6+
-- [api-om](https://github.com/Phyllipe-/api-om) rodando em `http://127.0.0.1:5000`
-
-### Instalação
+## Setup
 
 ```bash
 npm install
+npm run dev      # http://localhost:3000
 ```
 
-### Desenvolvimento
+A URL da API é detectada automaticamente:
+- `localhost` → `http://127.0.0.1:5000/api`
+- qualquer outro host → `https://api.omaproject.com.br/api`
 
-```bash
-npm run dev
-```
-
-Acesse [http://localhost:3000](http://localhost:3000).
-
-### Build para produção
-
-```bash
-npm run build
-```
-
-Os arquivos estáticos são gerados em `dist/`.
-
----
+Não é necessário nenhum `.env` para desenvolvimento local.
 
 ## Comandos
 
 | Comando | Descrição |
 |---|---|
-| `npm install` | Instala as dependências |
-| `npm run dev` | Inicia o servidor de desenvolvimento |
-| `npm run build` | Gera o site estático em `./dist` |
+| `npm run dev` | Servidor de desenvolvimento com hot reload |
+| `npm run build` | Gera o site estático em `dist/` |
 | `npm run clean` | Limpa o cache dos data loaders |
+| `npm test` | Roda os testes unitários (Vitest) |
+| `npm run test:watch` | Testes em modo watch |
+
+## Estrutura
+
+```
+dashboard-om/
+├── src/
+│   ├── auth.js                        # Gerenciamento de sessão JWT
+│   ├── api.js                         # Funções de acesso à api-om
+│   ├── index.md                       # Página inicial / redirect
+│   ├── login.md                       # Tela de login
+│   ├── registro.md                    # Cadastro de professor
+│   ├── admin/
+│   │   ├── alunos.md                  # Lista e gerencia alunos
+│   │   ├── cadastrar-aluno.md
+│   │   ├── editar-aluno.md
+│   │   ├── professores.md             # Somente admin
+│   │   ├── cadastrar-professor.md
+│   │   ├── editar-professor.md
+│   │   ├── mapas.md                   # Upload, download e edição de mapas
+│   │   ├── atividades.md
+│   │   └── criar-atividade.md
+│   └── visualizacao/
+│       ├── alunos.md
+│       ├── dados-aluno.md
+│       ├── sessao.md                  # Análise detalhada de sessão (heatmap, giros, colisão)
+│       └── perfil-aluno.md
+├── src/lib/                           # Lógica pura — testável
+│   ├── mapa/
+│   │   └── parser.js                  # parseMapaXML() — lê XML do mapa ENA
+│   └── sessao/
+│       ├── giros.js                   # detectarGiros(), posicoesIguais()
+│       ├── heatmap.js                 # contarMovimentos(), heatTilesParaRects()
+│       ├── colisao.js                 # extrairSegmentos(), extrairColisoes()
+│       └── lateralidade.js            # extrairLateralidade()
+├── observablehq.config.js             # Navegação e sidebar do app
+├── .github/workflows/deploy.yml       # CI/CD
+└── package.json
+```
+
+## Testes
+
+Os testes cobrem as funções puras em `src/lib/` — algoritmos de processamento do log de sessão e parser de XML:
+
+```bash
+npm test
+```
+
+```
+✓ src/lib/sessao/giros.test.js        (15 testes)
+✓ src/lib/sessao/heatmap.test.js      (11 testes)
+✓ src/lib/sessao/colisao.test.js      (16 testes)
+✓ src/lib/sessao/lateralidade.test.js  (6 testes)
+✓ src/lib/mapa/parser.test.js          (8 testes)
+```
+
+O que **não** está coberto por testes: páginas `.md`, gráficos Observable Plot, chamadas à API, fluxo de autenticação. Para esses, seria necessário Playwright (testes de navegador).
+
+Para adicionar um novo teste, crie um arquivo `<modulo>.test.js` ao lado do arquivo correspondente em `src/lib/`.
+
+## CI/CD
+
+Push para `master` dispara o workflow em `.github/workflows/deploy.yml`:
+
+1. **Job `test`** — roda `npm test` no runner self-hosted
+2. **Job `deploy`** — só executa se os testes passarem; faz build e copia `dist/` para `/var/www/dashboard-om/` no servidor Hetzner
+
+O runner self-hosted (`ghrunner` user) está instalado no mesmo servidor Hetzner que serve o site.
+
+## Controle de acesso
+
+| Perfil | Permissões |
+|---|---|
+| **Professor** | Gerencia seus próprios alunos, mapas e atividades |
+| **Admin** (`id_usuario = 1`) | Acesso total, incluindo gerenciamento de professores |
+
+A verificação é feita pela api-om. O dashboard apenas lê o papel do usuário pelo token JWT.
+
+## Convenções
+
+- Cada página `.md` é autônoma — carrega seus próprios dados via `fetch` + JWT do `sessionStorage`
+- Lógica reutilizável (parsing, cálculos) vai em `src/lib/` como funções puras exportadas
+- Imagens protegidas (minimap, render 3D) são carregadas via `fetch` com `Authorization` header + `URL.createObjectURL` — nunca com token na URL
+- `E3_BASE` é detectado por `location.hostname` para apontar ao e3-react correto (dev vs prod)
+
+## Ambientes
+
+| Ambiente | URL |
+|---|---|
+| Desenvolvimento | `http://localhost:3000` |
+| Produção | `https://mova.omaproject.com.br` |

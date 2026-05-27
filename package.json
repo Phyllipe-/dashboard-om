@@ -6,14 +6,17 @@
     "build": "observable build",
     "dev": "observable preview",
     "deploy": "observable deploy",
-    "observable": "observable"
+    "observable": "observable",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@observablehq/framework": "^1.13.4",
     "@xmldom/xmldom": "^0.8.11"
   },
   "devDependencies": {
-    "rimraf": "^5.0.5"
+    "rimraf": "^5.0.5",
+    "vitest": "^2.1.9"
   },
   "engines": {
     "node": ">=18"

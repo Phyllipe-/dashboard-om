@@ -5,8 +5,27 @@ on:
     branches: [master]
 
 jobs:
+  test:
+    name: Testes
+    runs-on: [self-hosted, linux, x64]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Testes
+        run: npm test
+
   deploy:
     name: Build & Deploy dashboard-om
+    needs: test
     runs-on: [self-hosted, linux, x64]
 
     steps:
