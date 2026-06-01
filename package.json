@@ -12,7 +12,8 @@
   },
   "dependencies": {
     "@observablehq/framework": "^1.13.4",
-    "@xmldom/xmldom": "^0.8.11"
+    "@xmldom/xmldom": "^0.8.11",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "rimraf": "^5.0.5",

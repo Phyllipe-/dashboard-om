@@ -74,6 +74,12 @@ export default {
     <!-- Espaço flexível -->
     <div style="flex:1;"></div>
 
+    <!-- Configurar ENA -->
+    <a href="/configurar-ena" title="Configurar ENA via QR Code"
+      style="margin-right:.4rem;font-size:.78rem;padding:.28rem .7rem;border:1px solid var(--theme-foreground-faint);border-radius:5px;cursor:pointer;background:transparent;color:inherit;text-decoration:none;white-space:nowrap;">
+      📱 Configurar ENA
+    </a>
+
     <!-- Usuário + Logout -->
     <span id="header-user" style="font-size:.82rem; color:var(--theme-foreground-muted);"></span>
 
