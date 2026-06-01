@@ -471,7 +471,7 @@ renderMeus();
 display(html`<div>
   <div class="page-header">
     <h1>Mapas</h1>
-    <a class="btn btn-primary ext-link" id="btn-novo-mapa" href="#" target="_blank" rel="noopener">Criar novo mapa (Editor-E3)</a>
+    <a class="btn btn-primary" id="btn-novo-mapa" href="#" target="_blank" rel="noopener">Criar novo mapa no E3</a>
   </div>
 
   <div class="stats-bar">${statTotal}${statMeus}${statAtivos}</div>
