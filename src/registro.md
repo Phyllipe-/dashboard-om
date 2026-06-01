@@ -313,7 +313,7 @@ btnSalvar.addEventListener("click", async () => {
 display(html`<div class="form-page">
   <h1>Criar conta</h1>
   <p class="form-subtitle">
-    Crie sua conta de professor para acessar o Dashboard OM.
+    Crie sua conta de professor para acessar o MOVA.
     Os campos marcados com * são obrigatórios.
   </p>
 
