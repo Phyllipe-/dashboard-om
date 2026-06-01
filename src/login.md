@@ -115,7 +115,7 @@ const erroDiv    = html`<div></div>`;
 
 const card = html`<div class="login-page">
   <div class="login-card">
-    <h2>Dashboard OM</h2>
+    <h2><strong>MOVA</strong> <span style="font-weight:400;color:var(--theme-foreground-muted);">| Mobility &amp; Orientation Visualization Analytics</span></h2>
     <p class="login-subtitle">Entre com suas credenciais de professor.</p>
     <div class="login-field">
       <label>Email</label>
