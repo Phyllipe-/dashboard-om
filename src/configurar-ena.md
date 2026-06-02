@@ -10,7 +10,8 @@ toc: false
   .observablehq-center, .observablehq--article, main { all: unset !important; display: block !important; }
 
   .qr-page {
-    min-height: 100vh;
+    position: fixed;
+    inset: 0;
     display: flex;
     align-items: center;
     justify-content: center;
