@@ -221,7 +221,8 @@ if (sessao.render_3d) {
   const img = document.createElement("img");
   img.alt = "Render 3D";
   img.loading = "lazy";
-  fetch(`${API_BASE}/treinos/mapas/${sessao.id_mapa}/render3d`, { headers: { Authorization: `Bearer ${token}` } })
+  // Cache-bust com timestamp para evitar cache do navegador retornar sempre a mesma imagem
+  fetch(`${API_BASE}/treinos/mapas/${sessao.id_mapa}/render3d?t=${Date.now()}`, { headers: { Authorization: `Bearer ${token}` } })
     .then(r => r.ok ? r.blob() : null)
     .then(blob => { if (blob) img.src = URL.createObjectURL(blob); })
     .catch(() => {});
