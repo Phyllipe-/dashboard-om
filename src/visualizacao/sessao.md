@@ -221,21 +221,11 @@ if (sessao.render_3d) {
   const img = document.createElement("img");
   img.alt = "Render 3D";
   img.loading = "lazy";
-  // DEBUG: verificar qual id_mapa está sendo usado
-  console.log(`[DEBUG] Buscando render3d para id_mapa=${sessao.id_mapa}, URL: ${API_BASE}/treinos/mapas/${sessao.id_mapa}/render3d`);
   // Cache-bust com timestamp para evitar cache do navegador retornar sempre a mesma imagem
   fetch(`${API_BASE}/treinos/mapas/${sessao.id_mapa}/render3d?t=${Date.now()}`, { headers: { Authorization: `Bearer ${token}` } })
-    .then(r => {
-      console.log(`[DEBUG] Response para id_mapa=${sessao.id_mapa}: status=${r.status}, ok=${r.ok}`);
-      return r.ok ? r.blob() : null;
-    })
-    .then(blob => {
-      if (blob) {
-        console.log(`[DEBUG] Blob recebido para id_mapa=${sessao.id_mapa}, size=${blob.size}`);
-        img.src = URL.createObjectURL(blob);
-      }
-    })
-    .catch(err => console.error(`[DEBUG] Erro ao buscar render3d para id_mapa=${sessao.id_mapa}:`, err));
+    .then(r => r.ok ? r.blob() : null)
+    .then(blob => { if (blob) img.src = URL.createObjectURL(blob); })
+    .catch(() => {});
   renderWrap.append(img);
 } else {
   renderWrap.innerHTML = `<div class="img-placeholder">Render 3D não disponível</div>`;
