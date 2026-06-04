@@ -337,7 +337,7 @@ async function editarMapa(mapa, btnEditar) {
   }
 
   const token = sessionStorage.getItem("om_token");
-  const e3Url = id => `${E3_BASE}/?mode=edit&id=${id}&token=${encodeURIComponent(token)}`;
+  const e3Url = (id, nome) => `${E3_BASE}/?mode=edit&id=${id}&token=${encodeURIComponent(token)}${nome ? `&nome=${encodeURIComponent(nome)}` : ""}`;
 
   // Cenário 1 — mapa em atividade ATIVA
   if (uso.em_atividade_ativa) {
@@ -371,7 +371,7 @@ async function editarMapa(mapa, btnEditar) {
     try {
       btnEditar.textContent = "Criando cópia…";
       const copia = await copiarMapaProprio(mapa.id_mapa);
-      window.open(e3Url(copia.id_mapa), "_blank");
+      window.open(e3Url(copia.id_mapa, copia.nome_mapa || mapa.nome_mapa), "_blank");
     } catch(e) {
       alert("Erro ao criar cópia: " + e.message);
     }
@@ -380,7 +380,7 @@ async function editarMapa(mapa, btnEditar) {
   }
 
   // Cenário 3 — mapa NÃO está em nenhuma atividade
-  window.open(e3Url(mapa.id_mapa), "_blank");
+  window.open(e3Url(mapa.id_mapa, mapa.nome_mapa), "_blank");
   btnEditar.disabled = false; btnEditar.textContent = "Editar";
 }
 
