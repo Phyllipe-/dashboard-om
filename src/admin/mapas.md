@@ -55,6 +55,8 @@ toc: false
   .td-acoes { display:flex; gap:.35rem; align-items:stretch; flex-wrap:nowrap; white-space:nowrap; }
   .maps-table th:last-child,
   .maps-table td:last-child { white-space:nowrap; width:1%; }
+  .maps-table th.col-prof, .maps-table td.col-prof { white-space:nowrap; min-width:200px; }
+  .maps-table th.col-data, .maps-table td.col-data { white-space:nowrap; min-width:150px; }
 
   /* Preview thumbnail */
   .map-thumb {
@@ -85,7 +87,7 @@ toc: false
     cursor:default;
   }
   .lightbox-title { font-weight:700; font-size:1rem; margin:0; }
-  .lightbox-img { max-width:min(480px,80vw); max-height:60vh; object-fit:contain; border-radius:6px; }
+  .lightbox-img { max-width:min(900px,88vw); max-height:80vh; object-fit:contain; border-radius:6px; }
   .lightbox-meta { font-size:.8rem; color:var(--theme-foreground-muted); }
   .lightbox-close { align-self:flex-end; background:none; border:none; font-size:1.2rem; cursor:pointer; color:var(--theme-foreground-muted); }
 </style>
@@ -274,8 +276,8 @@ function renderTodos() {
     tr.append(
       celulaPreview(m),
       html`<td>${m.nome_mapa}</td>`,
-      html`<td style="color:var(--theme-foreground-muted);font-size:.85rem">${m.nome_professor}</td>`,
-      html`<td style="color:var(--theme-foreground-muted);font-size:.85rem">${m.data_criacao}</td>`,
+      html`<td class="col-prof" style="color:var(--theme-foreground-muted);font-size:.85rem">${m.nome_professor}</td>`,
+      html`<td class="col-data" style="color:var(--theme-foreground-muted);font-size:.85rem">${m.data_criacao}</td>`,
       html`<td><span class="badge ${m.ativo ? "badge-ativo" : "badge-inativo"}">${m.ativo ? "Ativo" : "Inativo"}</span></td>`,
       tdOrigem,
       tdAcoes,
@@ -430,7 +432,7 @@ function renderMeus() {
     tr.append(
       celulaPreview(m),
       html`<td>${m.nome_mapa}</td>`,
-      html`<td style="color:var(--theme-foreground-muted);font-size:.85rem">${m.data_criacao}</td>`,
+      html`<td class="col-data" style="color:var(--theme-foreground-muted);font-size:.85rem">${m.data_criacao}</td>`,
       html`<td><span class="badge ${m.ativo ? "badge-ativo" : "badge-inativo"}">${m.ativo ? "Ativo" : "Inativo"}</span></td>`,
       tdOrigem,
       tdAcoes,
@@ -455,12 +457,12 @@ tabMeus.addEventListener("click", () => {
 });
 
 panelTodos.append(html`<table class="maps-table">
-  <thead><tr><th>Preview</th><th>Nome</th><th>Professor</th><th>Data</th><th>Status</th><th>Origem</th><th>Ação</th></tr></thead>
+  <thead><tr><th>Preview</th><th>Nome</th><th class="col-prof">Professor</th><th class="col-data">Data</th><th>Status</th><th>Origem</th><th>Ação</th></tr></thead>
   ${tbodyTodos}
 </table>`);
 
 panelMeus.append(html`<table class="maps-table">
-  <thead><tr><th>Preview</th><th>Nome</th><th>Data</th><th>Status</th><th>Origem</th><th>Ação</th></tr></thead>
+  <thead><tr><th>Preview</th><th>Nome</th><th class="col-data">Data</th><th>Status</th><th>Origem</th><th>Ação</th></tr></thead>
   ${tbodyMeus}
 </table>`);
 
