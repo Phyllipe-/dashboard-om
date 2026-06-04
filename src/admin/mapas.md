@@ -87,7 +87,7 @@ toc: false
     cursor:default;
   }
   .lightbox-title { font-weight:700; font-size:1rem; margin:0; }
-  .lightbox-img { max-width:min(900px,88vw); max-height:80vh; object-fit:contain; border-radius:6px; }
+  .lightbox-img { width:min(760px,86vw); max-height:80vh; object-fit:contain; border-radius:6px; image-rendering:pixelated; }
   .lightbox-meta { font-size:.8rem; color:var(--theme-foreground-muted); }
   .lightbox-close { align-self:flex-end; background:none; border:none; font-size:1.2rem; cursor:pointer; color:var(--theme-foreground-muted); }
 </style>
