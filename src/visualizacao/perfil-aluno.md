@@ -328,11 +328,13 @@ if (headerLogout) headerLogout.addEventListener("click", logout);
 // ── Preferências de quadros (visibilidade por padrão ou customizada) ──────────
 let _prefMap = {};       // chave → visivel
 let _sessaoUnicaMap = {}; // chave → exclusivo_sessao_unica
+let _ordemMap = {};      // chave → ordem
 try {
   const prefs = await fetchPreferenciasQuadros();
   for (const p of prefs) {
     _prefMap[p.chave] = p.visivel;
     if (p.exclusivo_sessao_unica) _sessaoUnicaMap[p.chave] = true;
+    if (p.ordem != null) _ordemMap[p.chave] = p.ordem;
   }
 } catch(_) {}
 
@@ -341,6 +343,32 @@ function _visivel(chave) {
 }
 function _exclusivoSessaoUnica(chave) {
   return !!_sessaoUnicaMap[chave];
+}
+function _ordem(chave) {
+  return _ordemMap[chave] !== undefined ? _ordemMap[chave] : 999;
+}
+
+// Reordena os quadros de cada coluna conforme a 'ordem' do catálogo/preferências,
+// preservando a posição de painéis sem data-quadro-chave. Move os elementos (não
+// clona) para manter os containers vivos (plots, mapas, etc.) intactos.
+function reordenarQuadros() {
+  document.querySelectorAll(".col-esquerda, .col-centro, .col-direita").forEach(col => {
+    const quadroEls = Array.from(col.children).filter(el => el.dataset && el.dataset.quadroChave);
+    if (quadroEls.length < 2) return;
+    const markers = quadroEls.map(el => {
+      const m = document.createComment("q");
+      col.insertBefore(m, el);
+      col.removeChild(el);
+      return m;
+    });
+    const ordenados = [...quadroEls].sort(
+      (a, b) => _ordem(a.dataset.quadroChave) - _ordem(b.dataset.quadroChave)
+    );
+    markers.forEach((m, i) => {
+      col.insertBefore(ordenados[i], m);
+      col.removeChild(m);
+    });
+  });
 }
 
 function aplicarVisibilidade() {
@@ -4432,7 +4460,8 @@ display(html`<div>
   </div>
 </div>`);
 
-// Aplica visibilidade dos painéis conforme preferências carregadas
+// Reordena os quadros conforme a ordem do catálogo/preferências e aplica visibilidade
+reordenarQuadros();
 aplicarVisibilidade();
 
 // ── Carga inicial ─────────────────────────────────────────────────────────
