@@ -1917,9 +1917,11 @@ function _renderizarDwell() {
   }
 
   const LEGENDA_W = 140;
-  const W = (dwellContainer.getBoundingClientRect().width || 500) - LEGENDA_W - 16;
-  const scale = W / cols;
-  const H = scale * rows;
+  const Wbox = (dwellContainer.getBoundingClientRect().width || 500) - LEGENDA_W - 16;
+  // Mesma fórmula dos outros mapas: preserva o aspecto e limita a altura a 480px.
+  const scale = Math.min((Wbox - 8) / cols, 480 / rows);
+  const W = Math.round(cols * scale);
+  const H = Math.round(rows * scale);
 
   const getCamada  = name => camadas.find(c => c.layerName === name);
   const polyToRect = f => {
