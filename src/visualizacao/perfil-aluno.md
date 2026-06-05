@@ -1789,6 +1789,24 @@ function objetivoParaFeature(feature, dadosLog, rows) {
   return best;
 }
 
+// ── Helper: encontra o objetivo do log pelo centro (cx, cy) da feature ──
+// Casa por POSIÇÃO (como objetivoParaFeature), robusto a falhas de timing —
+// usado pelos quadros de replay (Simulador e Análise de Segmento).
+function objetivoParaCentro(cx, cy, objetivos, rows) {
+  let best = null, bestHits = 0;
+  for (const obj of objetivos ?? []) {
+    let hits = 0;
+    for (const a of obj.actions ?? []) {
+      if (!a.position) continue;
+      const px = Math.round(a.position.x) + 0.5;
+      const py = Math.round(a.position.z) - rows + 0.5;
+      if (Math.abs(px - cx) <= 1.5 && Math.abs(py - cy) <= 1.5) hits++;
+    }
+    if (hits > bestHits) { bestHits = hits; best = obj; }
+  }
+  return best;
+}
+
 // ── Helper: linha de objetivo na legenda ──────────────────────────────────
 function mkObjLegendaRow(logObj, idx, maxWidth = "130px") {
   const concluido = (logObj?.endTime  ?? 0) > 0;
@@ -2661,10 +2679,7 @@ function _renderizarReplay() {
   };
   if (mapaFinalizado) {
     for (const [si, oc] of objCenters.entries()) {
-      const t = oc.lastInCrossT;
-      const obj = t != null
-        ? objetivos.find(o => t >= (o.startTime ?? 0) && (!(o.endTime > 0) || t <= o.endTime))
-        : null;
+      const obj = objetivoParaCentro(oc.cx, oc.cy, objetivos, rows);
       const nome = obj?.objectiveName ?? `Objetivo ${si + 1}`;
       const rowSeg = mkSegRow(CORES_OBJ[si % CORES_OBJ.length], nome, si + 1);
       rowSeg.style.cursor = "pointer";
@@ -2750,10 +2765,7 @@ function _renderizarReplay() {
 
   if (mapaFinalizado) {
     for (const [si, oc] of objCenters.entries()) {
-      const t = oc.lastInCrossT;
-      const obj = t != null
-        ? objetivos.find(o => t >= (o.startTime ?? 0) && (!(o.endTime > 0) || t <= o.endTime))
-        : null;
+      const obj = objetivoParaCentro(oc.cx, oc.cy, objetivos, rows);
       const nome = obj?.objectiveName ?? `Objetivo ${si + 1}`;
       const cor = CORES_OBJ[si % CORES_OBJ.length];
 
@@ -3489,10 +3501,7 @@ function _renderizarReplayD3() {
   };
   if (mapaFinalizado) {
     for (const [si, oc] of objCenters.entries()) {
-      const t = oc.lastInCrossT;
-      const obj = t != null
-        ? objetivos.find(o => t >= (o.startTime ?? 0) && (!(o.endTime > 0) || t <= o.endTime))
-        : null;
+      const obj = objetivoParaCentro(oc.cx, oc.cy, objetivos, rows);
       const nome = obj?.objectiveName ?? `Objetivo ${si+1}`;
       legenda.append(mkSegRow(CORES_OBJ[si%CORES_OBJ.length], nome, si+1));
     }
