@@ -2330,10 +2330,10 @@ function _renderizarReplay() {
   const unvisited = featureStats.filter(f => f.hits === 0);
   const objCenters = [...visited, ...unvisited]
     .slice(0, nObj)
-    .sort((a, b) =>
-      (Math.abs(a.cx - startPx) + Math.abs(a.cy - startPy)) -
-      (Math.abs(b.cx - startPx) + Math.abs(b.cy - startPy))
-    );
+    // Ordena por TEMPO de cruzamento (não por distância): mantém os cutoffs
+    // monotônicos, evitando que um segmento fique vazio quando o aluno visita
+    // os objetivos fora da ordem de distância. Não-visitados (sem tempo) vão ao fim.
+    .sort((a, b) => (a.lastInCrossT ?? Infinity) - (b.lastInCrossT ?? Infinity));
 
   // Cortes de segmento i→i+1: último passo dentro da cruz do objetivo i.
   const cutoffs = objCenters.slice(0, nObj - 1).map(c => c.lastInCrossT ?? Infinity);
@@ -2888,10 +2888,9 @@ function _renderizarReplayD3() {
   const visited   = featureStats.filter(f => f.hits > 0).sort((a, b) => b.hits - a.hits);
   const unvisited = featureStats.filter(f => f.hits === 0);
   const objCenters = [...visited, ...unvisited].slice(0, nObj)
-    .sort((a, b) =>
-      (Math.abs(a.cx - startPx) + Math.abs(a.cy - startPy)) -
-      (Math.abs(b.cx - startPx) + Math.abs(b.cy - startPy))
-    );
+    // Ordena por TEMPO de cruzamento (ver Análise de Segmento): cutoffs monotônicos,
+    // nenhum segmento vazio, e a ordem temporal alinha com objetivos[si].
+    .sort((a, b) => (a.lastInCrossT ?? Infinity) - (b.lastInCrossT ?? Infinity));
 
   const cutoffs     = objCenters.slice(0, nObj - 1).map(c => c.lastInCrossT ?? Infinity);
   const lastObjEndTime = objetivos.reduce((maxT, obj) => Math.max(maxT, obj.endTime ?? 0), 0);
