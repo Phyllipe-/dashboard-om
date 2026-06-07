@@ -32,11 +32,27 @@ toc: false
   .stat-card { background:var(--theme-background-alt); border:1px solid var(--theme-foreground-faintest); border-radius:8px; padding:.75rem 1.25rem; min-width:120px; }
   .stat-value { font-size:1.6rem; font-weight:700; }
   .stat-label { font-size:.78rem; color:var(--theme-foreground-muted); margin-top:.1rem; }
+  /* ── Modal padrão do sistema ─────────────────────────────── */
+  .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.6); backdrop-filter:blur(3px); display:flex; align-items:center; justify-content:center; z-index:9999; padding:1rem; animation:fadeIn .18s ease; }
+  @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+  .modal-box { background:var(--theme-background); border:1px solid var(--theme-foreground-faint); border-radius:16px; overflow:hidden; width:100%; max-width:520px; box-shadow:0 24px 60px rgba(0,0,0,.4); animation:slideUp .2s ease; }
+  @keyframes slideUp { from{transform:translateY(16px);opacity:0} to{transform:translateY(0);opacity:1} }
+  .modal-header { display:flex; align-items:center; gap:1rem; padding:1.25rem 1.4rem 1rem; border-bottom:3px solid var(--modal-accent,#888); }
+  .modal-name  { font-size:1.15rem; font-weight:700; margin-bottom:.1rem; }
+  .modal-meta  { font-size:.82rem; color:var(--theme-foreground-muted); line-height:1.5; }
+  .modal-close { margin-left:auto; background:none; border:none; cursor:pointer; color:var(--theme-foreground-muted); font-size:1.4rem; line-height:1; padding:.2rem .4rem; border-radius:4px; }
+  .modal-close:hover { background:var(--theme-background-alt); color:var(--theme-foreground); }
+  .modal-footer { padding:.85rem 1.4rem 1.1rem; display:flex; justify-content:flex-end; gap:.5rem; align-items:center; border-top:1px solid var(--theme-foreground-faintest); }
+  .btn-primary-modal, .btn-ghost-modal { padding:.5rem 1.1rem; border-radius:8px; font-size:.9rem; font-weight:600; border:1px solid var(--theme-foreground-faint); background:transparent; color:var(--theme-foreground); cursor:pointer; }
+  .btn-primary-modal { background:var(--theme-foreground); color:var(--theme-background); border-color:var(--theme-foreground); }
+  .btn-primary-modal:hover, .btn-ghost-modal:hover { opacity:.85; background:var(--theme-background-alt); }
+  .btn-primary-modal:hover { background:var(--theme-foreground); }
+  .link-input { width:100%; padding:.55rem; border:1px solid var(--theme-foreground-faint); border-radius:6px; font-size:.85rem; background:var(--theme-background-alt); color:var(--theme-foreground); box-sizing:border-box; }
 </style>
 
 ```js
 import { requireAuth, logout } from "../auth.js";
-import { fetchAlunos, toggleAtivoAluno, atualizarLoginAluno } from "../api.js";
+import { fetchAlunos, toggleAtivoAluno, atualizarLoginAluno, gerarLinkPratica } from "../api.js";
 
 const currentUser = requireAuth();
 const headerUser = document.getElementById("header-user");
@@ -79,6 +95,60 @@ function alunosFiltrados() {
     const matchBusca = !q || a.nome_completo.toLowerCase().includes(q) || a.email.toLowerCase().includes(q) || loginEfetivo.toLowerCase().includes(q);
     return matchFiltro && matchBusca;
   });
+}
+
+// Copia para a área de transferência com fallback (execCommand).
+async function copiarTexto(texto, input) {
+  try { await navigator.clipboard.writeText(texto); return true; }
+  catch {
+    try { input.select(); return document.execCommand("copy"); }
+    catch { return false; }
+  }
+}
+
+// Modal padrão do sistema confirmando que o link foi copiado.
+function mostrarModalLinkCopiado(url, nomeAluno, horas, copiado) {
+  const input = html`<input class="link-input" type="text" readonly />`;
+  input.value = url;
+  const btnFechar = html`<button class="btn-ghost-modal">Fechar</button>`;
+  const btnCopiar = html`<button class="btn-primary-modal">Copiar novamente</button>`;
+  const btnX = html`<button class="modal-close" title="Fechar">×</button>`;
+
+  const titulo = copiado ? "Link copiado" : "Link de prática gerado";
+  const aviso = copiado
+    ? "O link foi copiado para a área de transferência."
+    : "Não foi possível copiar automaticamente. Use o botão Copiar novamente.";
+
+  const overlay = html`<div class="modal-overlay">
+    <div class="modal-box" style="--modal-accent:#16a34a">
+      <div class="modal-header">
+        <div>
+          <div class="modal-name">${titulo}</div>
+          <div class="modal-meta">${nomeAluno} · válido ${horas}h para abrir</div>
+        </div>
+        ${btnX}
+      </div>
+      <div style="padding:1rem 1.4rem .25rem;">
+        <p style="margin:0 0 .85rem;font-size:.9rem;line-height:1.45;color:var(--theme-foreground);">
+          ${aviso} Envie ao aluno — ele deve abri-lo no aparelho em até ${horas} horas.
+          Depois de aberto, a prática vale até o aluno tocar em <em>Encerrar Sessão</em>, quando será preciso um novo link.
+        </p>
+        ${input}
+      </div>
+      <div class="modal-footer">${btnFechar}${btnCopiar}</div>
+    </div>
+  </div>`;
+
+  btnCopiar.addEventListener("click", async () => {
+    const ok = await copiarTexto(url, input);
+    btnCopiar.textContent = ok ? "Copiado!" : "Selecione e copie";
+    setTimeout(() => { btnCopiar.textContent = "Copiar novamente"; }, 1500);
+  });
+  const fechar = () => overlay.remove();
+  btnFechar.addEventListener("click", fechar);
+  btnX.addEventListener("click", fechar);
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) fechar(); });
+  document.body.append(overlay);
 }
 
 function renderTabela() {
@@ -146,9 +216,31 @@ function renderTabela() {
     const tdBadge  = document.createElement("td");
     const badge    = document.createElement("span"); badge.className = `badge ${a.ativo ? "badge-ativo" : "badge-inativo"}`; badge.textContent = a.ativo ? "Ativo" : "Inativo";
     tdBadge.append(badge);
+    const dicaLink = a.ativo
+      ? "Gera um link de prática autônoma e copia para a área de transferência (válido 48h para o aluno abrir)"
+      : "Ative o aluno para gerar o link de prática";
+    const btnLink = html`<button class="btn-toggle" title="${dicaLink}" ${a.ativo ? "" : "disabled"}>Link</button>`;
+    btnLink.addEventListener("click", async () => {
+      btnLink.disabled = true;
+      const txt = btnLink.textContent;
+      btnLink.textContent = "…";
+      try {
+        const res = await gerarLinkPratica(a.id_aluno);
+        const tmp = document.createElement("input");
+        tmp.value = res.url;
+        const copiado = await copiarTexto(res.url, tmp);
+        mostrarModalLinkCopiado(res.url, a.nome_completo, res.validade_horas ?? 48, copiado);
+      } catch (e) {
+        alert("Erro ao gerar link: " + e.message);
+      } finally {
+        btnLink.disabled = !a.ativo;
+        btnLink.textContent = txt;
+      }
+    });
+
     const tdAcao   = document.createElement("td");
     const divAcoes = document.createElement("div"); divAcoes.className = "td-acoes";
-    divAcoes.append(btnEditar, btnToggle);
+    divAcoes.append(btnEditar, btnLink, btnToggle);
     tdAcao.append(divAcoes);
 
     const tr = document.createElement("tr");

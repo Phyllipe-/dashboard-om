@@ -79,6 +79,11 @@ export function apropriarAluno(id_aluno) {
   return apiFetch(`/alunos/${id_aluno}/apropriar`, { method: "POST" });
 }
 
+/** POST /api/alunos/:id/link-pratica — gera link de prática autônoma (válido 48h para abrir) */
+export function gerarLinkPratica(id_aluno) {
+  return apiFetch(`/alunos/${id_aluno}/link-pratica`, { method: "POST" });
+}
+
 /** GET /api/alunos/check-login?login=...&exclude_id=... — verifica disponibilidade do login */
 export function verificarLoginDisponivel(login, excludeId = null) {
   const params = new URLSearchParams({ login });
