@@ -93,9 +93,25 @@ export function verificarLoginDisponivel(login, excludeId = null) {
 
 // --- Mapas ---
 
-/** GET /api/treinos/mapas — todos os mapas (todos os professores) */
-export function fetchTodosMaps() {
-  return apiFetch("/treinos/mapas");
+/** GET /api/treinos/mapas — mapas públicos (top 5 sem busca; com busca varre todos).
+ *  params: { q, nota_min, ordem } — ordem: "recentes" | "antigos" */
+export function fetchTodosMaps(params = {}) {
+  const qs = new URLSearchParams();
+  if (params.q) qs.set("q", params.q);
+  if (params.nota_min != null && params.nota_min !== "") qs.set("nota_min", params.nota_min);
+  if (params.ordem) qs.set("ordem", params.ordem);
+  const s = qs.toString();
+  return apiFetch(`/treinos/mapas${s ? "?" + s : ""}`);
+}
+
+/** PATCH /api/treinos/mapas/:id/visibilidade — público/privado (criador/admin) */
+export function setVisibilidadeMapa(id_mapa, publico) {
+  return apiFetch(`/treinos/mapas/${id_mapa}/visibilidade`, { method: "PATCH", body: JSON.stringify({ publico }) });
+}
+
+/** POST /api/treinos/mapas/:id/avaliar — nota 0-3 (1 voto por professor) */
+export function avaliarMapa(id_mapa, nota) {
+  return apiFetch(`/treinos/mapas/${id_mapa}/avaliar`, { method: "POST", body: JSON.stringify({ nota }) });
 }
 
 /** GET /api/treinos/mapas/meus — apenas mapas do professor logado */

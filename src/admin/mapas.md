@@ -94,7 +94,7 @@ toc: false
 
 ```js
 import { requireAuth, logout } from "../auth.js";
-import { fetchTodosMaps, fetchMeusMaps, toggleAtivoMapa, apropriarMapa, checkUsoMapa, copiarMapaProprio } from "../api.js";
+import { fetchTodosMaps, fetchMeusMaps, toggleAtivoMapa, apropriarMapa, checkUsoMapa, copiarMapaProprio, setVisibilidadeMapa, avaliarMapa } from "../api.js";
 
 const API_BASE = (location.hostname === "localhost" || location.hostname === "127.0.0.1")
   ? "http://127.0.0.1:5000/api"
@@ -201,7 +201,7 @@ function origemBadge(mapa) {
 }
 
 // --- Stats ---
-const statTotal  = html`<div class="stat-card"><div class="stat-value"></div><div class="stat-label">Total (todos)</div></div>`;
+const statTotal  = html`<div class="stat-card"><div class="stat-value"></div><div class="stat-label">Públicos exibidos</div></div>`;
 const statMeus   = html`<div class="stat-card"><div class="stat-value"></div><div class="stat-label">Meus mapas</div></div>`;
 const statAtivos = html`<div class="stat-card"><div class="stat-value" style="color:#166534"></div><div class="stat-label">Ativos (meus)</div></div>`;
 
@@ -211,12 +211,76 @@ function atualizarStats() {
   statAtivos.querySelector(".stat-value").textContent = meusMapas.filter(m => m.ativo).length;
 }
 
+// --- Avaliação por estrelas (0-3) ---
+async function votar(m, nota) {
+  try {
+    const res = await avaliarMapa(m.id_mapa, nota);
+    m.nota_media = res.nota_media; m.total_avaliacoes = res.total_avaliacoes; m.minha_nota = res.minha_nota;
+    const meu = meusMapas.find(x => x.id_mapa === m.id_mapa);
+    if (meu) { meu.nota_media = res.nota_media; meu.total_avaliacoes = res.total_avaliacoes; meu.minha_nota = res.minha_nota; }
+    renderTodos(); renderMeus();
+  } catch (e) { alert("Erro ao avaliar: " + e.message); }
+}
+
+function celulaEstrelas(m) {
+  const td = document.createElement("td");
+  const stars = document.createElement("div");
+  stars.style.cssText = "color:#f59e0b;font-size:1.05rem;line-height:1;letter-spacing:2px;";
+  const v = m.minha_nota ?? 0;
+  for (let i = 1; i <= 3; i++) {
+    const s = document.createElement("span");
+    s.textContent = i <= v ? "★" : "☆";
+    s.style.cursor = "pointer";
+    s.title = "Clique para dar sua nota (clique na nota atual para zerar)";
+    s.addEventListener("click", () => votar(m, m.minha_nota === i ? 0 : i));
+    stars.append(s);
+  }
+  const info = document.createElement("div");
+  info.style.cssText = "font-size:.72rem;color:var(--theme-foreground-muted);margin-top:.15rem;";
+  info.textContent = m.total_avaliacoes ? `média ${m.nota_media} · ${m.total_avaliacoes} voto(s)` : "sem avaliações";
+  td.append(stars, info);
+  return td;
+}
+
+// --- Busca da aba "Todos os mapas" (nome / classificação / tempo) ---
+const buscaNome  = html`<input type="search" placeholder="Buscar por nome…" style="padding:.4rem .7rem;border:1px solid var(--theme-foreground-faint);border-radius:6px;background:var(--theme-background);color:var(--theme-foreground);font-size:.9rem;outline:none;min-width:200px;" />`;
+const filtroNota = html`<select style="padding:.4rem .6rem;border:1px solid var(--theme-foreground-faint);border-radius:6px;background:var(--theme-background);color:var(--theme-foreground);font-size:.9rem;">
+  <option value="">Qualquer nota</option>
+  <option value="1">1+ estrela</option>
+  <option value="2">2+ estrelas</option>
+  <option value="3">3 estrelas</option>
+</select>`;
+const ordemTempo = html`<select style="padding:.4rem .6rem;border:1px solid var(--theme-foreground-faint);border-radius:6px;background:var(--theme-background);color:var(--theme-foreground);font-size:.9rem;">
+  <option value="">Mais bem avaliados</option>
+  <option value="recentes">Mais recentes</option>
+  <option value="antigos">Mais antigos</option>
+</select>`;
+
+let buscaTimer;
+async function recarregarTodos() {
+  try {
+    const { mapas } = await fetchTodosMaps({
+      q: buscaNome.value.trim(),
+      nota_min: filtroNota.value,
+      ordem: ordemTempo.value,
+    });
+    todosMapas = mapas;
+    atualizarStats();
+    renderTodos();
+  } catch (e) {
+    alert("Erro na busca: " + e.message);
+  }
+}
+buscaNome.addEventListener("input", () => { clearTimeout(buscaTimer); buscaTimer = setTimeout(recarregarTodos, 400); });
+filtroNota.addEventListener("change", recarregarTodos);
+ordemTempo.addEventListener("change", recarregarTodos);
+
 // --- Tabela todos os mapas ---
 const tbodyTodos = html`<tbody></tbody>`;
 function renderTodos() {
   tbodyTodos.innerHTML = "";
   if (!todosMapas.length) {
-    tbodyTodos.append(html`<tr><td colspan="8" class="empty-state">Nenhum mapa cadastrado.</td></tr>`);
+    tbodyTodos.append(html`<tr><td colspan="7" class="empty-state">Nenhum mapa público encontrado.</td></tr>`);
     return;
   }
   for (const m of todosMapas) {
@@ -277,8 +341,8 @@ function renderTodos() {
       celulaPreview(m),
       html`<td>${m.nome_mapa}</td>`,
       html`<td class="col-prof" style="color:var(--theme-foreground-muted);font-size:.85rem">${m.nome_professor}</td>`,
+      celulaEstrelas(m),
       html`<td class="col-data" style="color:var(--theme-foreground-muted);font-size:.85rem">${m.data_criacao}</td>`,
-      html`<td><span class="badge ${m.ativo ? "badge-ativo" : "badge-inativo"}">${m.ativo ? "Ativo" : "Inativo"}</span></td>`,
       tdOrigem,
       tdAcoes,
     );
@@ -389,7 +453,7 @@ const tbodyMeus = html`<tbody></tbody>`;
 function renderMeus() {
   tbodyMeus.innerHTML = "";
   if (!meusMapas.length) {
-    tbodyMeus.append(html`<tr><td colspan="6" class="empty-state">Você ainda não criou nenhum mapa.</td></tr>`);
+    tbodyMeus.append(html`<tr><td colspan="7" class="empty-state">Você ainda não criou nenhum mapa.</td></tr>`);
     return;
   }
   for (const m of meusMapas) {
@@ -428,12 +492,42 @@ function renderMeus() {
     const tdOrigem = document.createElement("td");
     tdOrigem.innerHTML = origemBadge(m);
 
+    // Visibilidade público/privado (toggle do criador)
+    const tdVis = document.createElement("td");
+    const btnVis = document.createElement("button");
+    btnVis.className = "btn-sm";
+    const pintarVis = () => {
+      btnVis.textContent = m.publico ? "Público" : "Privado";
+      btnVis.style.borderColor = m.publico ? "#86efac" : "#fcd34d";
+      btnVis.style.color = m.publico ? "#166534" : "#92400e";
+      btnVis.title = m.publico ? "Clique para tornar privado" : "Clique para tornar público";
+    };
+    pintarVis();
+    btnVis.addEventListener("click", async () => {
+      btnVis.disabled = true;
+      try {
+        const res = await setVisibilidadeMapa(m.id_mapa, !m.publico);
+        m.publico = res.publico;
+        pintarVis();
+        recarregarTodos();            // pode entrar/sair do top 5 público
+      } catch (e) { alert("Erro: " + e.message); }
+      finally { btnVis.disabled = false; }
+    });
+    tdVis.append(btnVis);
+    if (m.publico && m.total_avaliacoes) {
+      const nota = document.createElement("div");
+      nota.style.cssText = "font-size:.72rem;color:var(--theme-foreground-muted);margin-top:.2rem;";
+      nota.textContent = `★ ${m.nota_media} · ${m.total_avaliacoes}`;
+      tdVis.append(nota);
+    }
+
     const tr = html`<tr></tr>`;
     tr.append(
       celulaPreview(m),
       html`<td>${m.nome_mapa}</td>`,
       html`<td class="col-data" style="color:var(--theme-foreground-muted);font-size:.85rem">${m.data_criacao}</td>`,
       html`<td><span class="badge ${m.ativo ? "badge-ativo" : "badge-inativo"}">${m.ativo ? "Ativo" : "Inativo"}</span></td>`,
+      tdVis,
       tdOrigem,
       tdAcoes,
     );
@@ -456,13 +550,23 @@ tabMeus.addEventListener("click", () => {
   panelMeus.style.display = ""; panelTodos.style.display = "none";
 });
 
-panelTodos.append(html`<table class="maps-table">
-  <thead><tr><th>Preview</th><th>Nome</th><th class="col-prof">Professor</th><th class="col-data">Data</th><th>Status</th><th>Origem</th><th>Ação</th></tr></thead>
-  ${tbodyTodos}
-</table>`);
+panelTodos.append(html`<div>
+  <p style="font-size:.82rem;color:var(--theme-foreground-muted);margin:0 0 .75rem;">
+    Mostra os <strong>5 mapas públicos mais bem avaliados</strong>. Use a busca abaixo para ver todos os públicos.
+  </p>
+  <div style="display:flex;gap:.6rem;margin-bottom:1rem;flex-wrap:wrap;align-items:center;">
+    ${buscaNome}
+    <span style="font-size:.8rem;color:var(--theme-foreground-muted);">Nota:</span> ${filtroNota}
+    <span style="font-size:.8rem;color:var(--theme-foreground-muted);">Ordem:</span> ${ordemTempo}
+  </div>
+  <table class="maps-table">
+    <thead><tr><th>Preview</th><th>Nome</th><th class="col-prof">Professor</th><th>Avaliação</th><th class="col-data">Data</th><th>Origem</th><th>Ação</th></tr></thead>
+    ${tbodyTodos}
+  </table>
+</div>`);
 
 panelMeus.append(html`<table class="maps-table">
-  <thead><tr><th>Preview</th><th>Nome</th><th class="col-data">Data</th><th>Status</th><th>Origem</th><th>Ação</th></tr></thead>
+  <thead><tr><th>Preview</th><th>Nome</th><th class="col-data">Data</th><th>Status</th><th>Visibilidade</th><th>Origem</th><th>Ação</th></tr></thead>
   ${tbodyMeus}
 </table>`);
 
