@@ -69,9 +69,9 @@ toc: false
   .instituicao-wrap.visible { display:flex; }
 
   /* ── Botões ─────────────────────────────────────────────────────────── */
-  .form-actions { display:flex; gap:.75rem; margin-top:1.75rem; align-items:center; flex-wrap:wrap; }
-  .btn { padding:.6rem 1.4rem; border-radius:7px; font-size:.9rem; font-weight:600; cursor:pointer; border:none; text-decoration:none; display:inline-block; transition:opacity .15s, background .15s; }
-  .btn-primary { background:#1e293b; color:#fff; }
+  .form-actions { display:flex; gap:.75rem; margin-top:1.75rem; align-items:stretch; flex-wrap:wrap; }
+  .btn { padding:.6rem 1.4rem; border-radius:7px; font-size:.9rem; font-weight:600; cursor:pointer; border:1.5px solid transparent; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; box-sizing:border-box; transition:opacity .15s, background .15s; }
+  .btn-primary { background:#1e293b; color:#fff; border-color:#1e293b; }
   .btn-primary:hover:not(:disabled) { background:#334155; }
   .btn-primary:disabled { opacity:.45; cursor:not-allowed; }
   .btn-ghost { background:transparent; color:var(--theme-foreground); border:1.5px solid var(--theme-foreground-faint); }
