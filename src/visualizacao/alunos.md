@@ -170,6 +170,8 @@ import { fetchAlunos, fetchSessoes, fetchMetricasAluno, buscarTodosAlunos, aprop
 const COR_MAPA = ["#4a90e2","#5ba85b","#e07b54","#c9a227","#9b59b6","#2eaaa8"];
 
 const currentUser = requireAuth();
+// Primeiros 1-2 nomes do professor logado (para o título).
+const nomeProf = (currentUser.nome || "").trim().split(/\s+/).slice(0, 2).join(" ");
 const headerUser   = document.getElementById("header-user");
 const headerLogout = document.getElementById("header-logout");
 if (headerUser)   headerUser.textContent = currentUser.nome;
@@ -745,7 +747,7 @@ const lblAtiv = document.createElement("span"); lblAtiv.className = "filter-labe
 filters.append(lbl, btnAtivos, btnTodos, btnInativos, searchInput, lblAtiv, selectAtividade);
 
 display(html`<div>
-  <div class="page-header"><h1>Alunos</h1></div>
+  <div class="page-header"><h1>Alunos${nomeProf ? ` — ${nomeProf}` : ""}</h1></div>
   ${statsBar}
   ${filters}
   ${grid}
