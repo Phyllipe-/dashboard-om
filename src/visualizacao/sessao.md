@@ -201,6 +201,7 @@ if (sessao.tem_minimap && sessao.caminho_minimap) {
   const img = document.createElement("img");
   img.alt = "Minimap";
   img.loading = "lazy";
+  img.style.transform = "rotate(180deg)";   // alinha o norte do minimap com o Preview 3D
   fetch(`${API_BASE}/treinos/arquivos${sessao.caminho_minimap}`, { headers: { Authorization: `Bearer ${token}` } })
     .then(r => r.ok ? r.blob() : null)
     .then(blob => { if (blob) img.src = URL.createObjectURL(blob); })
