@@ -171,12 +171,12 @@ function makeRadar(m) {
     const [dx,dy] = pt(R * e.valor / 100, e.angulo);
     const anchor  = lx < cx - 5 ? "end" : lx > cx + 5 ? "start" : "middle";
     return `<circle cx="${dx}" cy="${dy}" r="4" fill="${cor.stroke}"/>
-      <text x="${lx}" y="${ly-7}" font-size="11" fill="rgba(180,180,180,.8)" text-anchor="${anchor}" font-family="system-ui,sans-serif">${e.label}</text>
+      <text x="${lx}" y="${ly-7}" font-size="11" font-weight="600" style="fill:var(--theme-foreground)" text-anchor="${anchor}" font-family="system-ui,sans-serif">${e.label}</text>
       <text x="${lx}" y="${ly+9}" font-size="13" font-weight="700" fill="${cor.stroke}" text-anchor="${anchor}" font-family="system-ui,sans-serif">${Math.round(e.valor)}%</text>`;
   }).join("");
 
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("viewBox", "0 0 260 260");
+  svg.setAttribute("viewBox", "-20 -20 300 300");
   svg.style.cssText = "width:100%;max-width:260px";
   svg.innerHTML = grid + axes + polygon + labels;
   return svg;
