@@ -41,6 +41,13 @@ export function saveSession(token, usuario) {
   sessionStorage.setItem(LOGIN_TIME_KEY, Date.now().toString());
 }
 
+/** Atualiza campos do usuário armazenado (ex.: limpar senha_provisoria após a troca). */
+export function updateUser(patch) {
+  const novo = { ...(getUser() || {}), ...patch };
+  sessionStorage.setItem(USER_KEY, JSON.stringify(novo));
+  return novo;
+}
+
 /** Remove a sessão e redireciona para o login. */
 export function logout() {
   sessionStorage.removeItem(TOKEN_KEY);
@@ -68,6 +75,11 @@ export function requireAuth() {
     sessionStorage.removeItem(LOGIN_TIME_KEY);
     window.location.href = "/login?expirado=1";
     throw new Error("Sessão expirada após 4 horas — redirecionando para login.");
+  }
+  // Senha provisória → força a troca antes de acessar qualquer página.
+  if (user.senha_provisoria && !location.pathname.startsWith("/trocar-senha")) {
+    window.location.href = "/trocar-senha";
+    throw new Error("Troca de senha obrigatória — redirecionando.");
   }
   return user;
 }

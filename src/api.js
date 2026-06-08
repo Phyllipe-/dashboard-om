@@ -232,6 +232,42 @@ export function removerProfessor(id) {
   return apiFetch(`/professores/${id}`, { method: "DELETE" });
 }
 
+// --- Recuperação de senha ---
+
+/** POST /api/professores/:id/link-reset — admin gera link de redefinição (24h) */
+export function gerarLinkResetProfessor(id) {
+  return apiFetch(`/professores/${id}/link-reset`, { method: "POST" });
+}
+
+/** POST /api/auth/esqueci-senha — self-service: envia link por e-mail (público) */
+export async function esqueciSenha(email) {
+  const r = await fetch(`${API_BASE}/auth/esqueci-senha`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.erro ?? `Erro ${r.status}`);
+  return data;
+}
+
+/** POST /api/auth/redefinir-senha — redefine a senha via token do link (público) */
+export async function redefinirSenha(token, nova_senha) {
+  const r = await fetch(`${API_BASE}/auth/redefinir-senha`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, nova_senha }),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.erro ?? `Erro ${r.status}`);
+  return data;
+}
+
+/** POST /api/auth/trocar-senha — troca autenticada (1º login / voluntária) */
+export function trocarSenha(senha_atual, nova_senha) {
+  return apiFetch("/auth/trocar-senha", { method: "POST", body: JSON.stringify({ senha_atual, nova_senha }) });
+}
+
 /** GET /api/treinos/sessoes?id_aluno=X — sessões de um aluno */
 export function fetchSessoes(id_aluno) {
   return apiFetch(`/treinos/sessoes?id_aluno=${id_aluno}`);

@@ -127,7 +127,10 @@ const card = html`<div class="login-page">
     </div>
     ${btnEntrar}
     ${erroDiv}
-    <p style="margin-top:1.25rem;font-size:.82rem;text-align:center;color:var(--theme-foreground-muted);">
+    <p style="margin-top:1rem;font-size:.82rem;text-align:center;">
+      <a href="/esqueci-senha" style="color:#4a90e2;font-weight:600;text-decoration:none;">Esqueci minha senha</a>
+    </p>
+    <p style="margin-top:.5rem;font-size:.82rem;text-align:center;color:var(--theme-foreground-muted);">
       Ainda não tem conta?
       <a href="/registro" style="color:#4a90e2;font-weight:600;text-decoration:none;">Cadastre-se</a>
     </p>
@@ -154,7 +157,7 @@ async function tentarLogin() {
   try {
     const { token, usuario } = await login(email, senha);
     saveSession(token, usuario);
-    window.location.href = "/";
+    window.location.href = usuario.senha_provisoria ? "/trocar-senha" : "/";
   } catch (err) {
     erroDiv.className = "login-error";
     erroDiv.textContent = err.message;

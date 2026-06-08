@@ -86,6 +86,23 @@ toc: false
   .loading { color:var(--theme-foreground-muted); padding:2rem 0; }
   .access-denied { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:3rem 1rem; text-align:center; gap:.75rem; color:var(--theme-foreground-muted); }
   .access-denied h2 { margin:0; font-size:1.2rem; color:var(--theme-foreground); }
+
+  /* ── Modal padrão do sistema ─────────────────────────────── */
+  .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.6); backdrop-filter:blur(3px); display:flex; align-items:center; justify-content:center; z-index:9999; padding:1rem; animation:fadeIn .18s ease; }
+  @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+  .modal-box { background:var(--theme-background); border:1px solid var(--theme-foreground-faint); border-radius:16px; overflow:hidden; width:100%; max-width:520px; box-shadow:0 24px 60px rgba(0,0,0,.4); animation:slideUp .2s ease; }
+  @keyframes slideUp { from{transform:translateY(16px);opacity:0} to{transform:translateY(0);opacity:1} }
+  .modal-header { display:flex; align-items:center; gap:1rem; padding:1.25rem 1.4rem 1rem; border-bottom:3px solid var(--modal-accent,#888); }
+  .modal-name  { font-size:1.15rem; font-weight:700; margin-bottom:.1rem; }
+  .modal-meta  { font-size:.82rem; color:var(--theme-foreground-muted); line-height:1.5; }
+  .modal-close { margin-left:auto; background:none; border:none; cursor:pointer; color:var(--theme-foreground-muted); font-size:1.4rem; line-height:1; padding:.2rem .4rem; border-radius:4px; }
+  .modal-close:hover { background:var(--theme-background-alt); color:var(--theme-foreground); }
+  .modal-footer { padding:.85rem 1.4rem 1.1rem; display:flex; justify-content:flex-end; gap:.5rem; align-items:center; border-top:1px solid var(--theme-foreground-faintest); }
+  .btn-primary-modal, .btn-ghost-modal { padding:.5rem 1.1rem; border-radius:8px; font-size:.9rem; font-weight:600; border:1px solid var(--theme-foreground-faint); background:transparent; color:var(--theme-foreground); cursor:pointer; }
+  .btn-primary-modal { background:var(--theme-foreground); color:var(--theme-background); border-color:var(--theme-foreground); }
+  .btn-primary-modal:hover, .btn-ghost-modal:hover { opacity:.85; background:var(--theme-background-alt); }
+  .btn-primary-modal:hover { background:var(--theme-foreground); }
+  .link-input { width:100%; padding:.55rem; border:1px solid var(--theme-foreground-faint); border-radius:6px; font-size:.9rem; font-family:monospace; background:var(--theme-background-alt); color:var(--theme-foreground); box-sizing:border-box; }
 </style>
 
 ```js
@@ -122,6 +139,67 @@ const fFormacao  = html`<textarea rows="2" placeholder="Graduação, pós-gradua
 const fTelefone  = html`<input type="tel"  placeholder="(00) 00000-0000" maxlength="15" />`;
 const hintTel    = html`<span class="hint"></span>`;
 const fSenha     = html`<input type="password" placeholder="Deixe em branco para não alterar" />`;
+const btnGerarSenha = html`<button type="button" class="btn-ghost" style="padding:.55rem .9rem;font-size:.8rem;white-space:nowrap;">Gerar senha aleatória</button>`;
+let senhaGerada = false;
+fSenha.addEventListener("input", () => { senhaGerada = false; });
+
+function gerarSenhaForte(tam = 14) {
+  const maius = "ABCDEFGHJKLMNPQRSTUVWXYZ", minus = "abcdefghijkmnpqrstuvwxyz", nums = "23456789", simb = "!@#$%&*?";
+  const todos = maius + minus + nums + simb;
+  const pick = (s) => s[Math.floor(Math.random() * s.length)];
+  let arr = [pick(maius), pick(minus), pick(nums), pick(simb)];
+  for (let i = arr.length; i < tam; i++) arr.push(pick(todos));
+  return arr.sort(() => Math.random() - 0.5).join("");
+}
+
+async function copiarTexto(texto, input) {
+  try { await navigator.clipboard.writeText(texto); return true; }
+  catch { try { input?.select(); return document.execCommand("copy"); } catch { return false; } }
+}
+
+function mostrarModalSenha(senha, nome, copiado) {
+  const input = html`<input class="link-input" type="text" readonly />`;
+  input.value = senha;
+  const btnFechar = html`<button class="btn-ghost-modal">Fechar</button>`;
+  const btnCopiar = html`<button class="btn-primary-modal">Copiar novamente</button>`;
+  const btnX = html`<button class="modal-close" title="Fechar">×</button>`;
+  const overlay = html`<div class="modal-overlay">
+    <div class="modal-box" style="--modal-accent:#16a34a">
+      <div class="modal-header">
+        <div><div class="modal-name">Senha gerada</div><div class="modal-meta">${nome} · troca obrigatória no 1º login</div></div>
+        ${btnX}
+      </div>
+      <div style="padding:1rem 1.4rem .25rem;">
+        <p style="margin:0 0 .85rem;font-size:.9rem;line-height:1.45;color:var(--theme-foreground);">
+          ${copiado ? "A senha foi copiada para a área de transferência." : "Copie a senha abaixo."}
+          Ela já foi preenchida no formulário — clique em <strong>Salvar alterações</strong> para aplicar.
+          O professor será obrigado a trocá-la no primeiro acesso.
+        </p>
+        ${input}
+      </div>
+      <div class="modal-footer">${btnFechar}${btnCopiar}</div>
+    </div>
+  </div>`;
+  btnCopiar.addEventListener("click", async () => {
+    const ok = await copiarTexto(senha, input);
+    btnCopiar.textContent = ok ? "Copiado!" : "Selecione e copie";
+    setTimeout(() => { btnCopiar.textContent = "Copiar novamente"; }, 1500);
+  });
+  const fechar = () => overlay.remove();
+  btnFechar.addEventListener("click", fechar);
+  btnX.addEventListener("click", fechar);
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) fechar(); });
+  document.body.append(overlay);
+}
+
+btnGerarSenha.addEventListener("click", async () => {
+  const senha = gerarSenhaForte();
+  fSenha.value = senha;
+  fSenha.type = "text";       // mostra a senha gerada
+  senhaGerada = true;
+  const copiado = await copiarTexto(senha, fSenha);
+  mostrarModalSenha(senha, (typeof prof !== "undefined" && prof?.nome_completo) || "o professor", copiado);
+});
 
 const rPessoal      = html`<input type="radio" name="tipo_endereco" value="pessoal"      checked />`;
 const rProfissional = html`<input type="radio" name="tipo_endereco" value="profissional" />`;
@@ -226,7 +304,10 @@ btnSalvar.addEventListener("click", async () => {
   if (fLogradouro.value.trim() !== (prof.logradouro      ?? "")) dados.logradouro          = fLogradouro.value.trim() || null;
   const instAtual = tipoEndereco === "profissional" ? (fInstituicao.value.trim() || null) : null;
   if (instAtual !== (prof.nome_instituicao ?? null))               dados.nome_instituicao  = instAtual;
-  if (fSenha.value)                                               dados.nova_senha        = fSenha.value;
+  if (fSenha.value) {
+    dados.nova_senha = fSenha.value;
+    if (senhaGerada) dados.senha_provisoria = true;   // força troca no 1º login
+  }
 
   if (!Object.keys(dados).length) {
     alertDiv.className = "alert alert-error";
@@ -286,8 +367,8 @@ container.replaceWith(html`<div class="form-page">
 
     <div class="form-field full">
       <label>Nova senha</label>
-      ${fSenha}
-      <span class="hint">Deixe em branco para manter a senha atual.</span>
+      <div style="display:flex;gap:.5rem;align-items:stretch;">${fSenha}${btnGerarSenha}</div>
+      <span class="hint">Deixe em branco para manter a senha atual. "Gerar senha aleatória" exige troca no 1º login.</span>
     </div>
 
   </div>
