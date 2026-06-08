@@ -265,6 +265,7 @@ async function recarregarTodos() {
       ordem: ordemTempo.value,
     });
     todosMapas = mapas;
+    paginaTodos = 1;
     atualizarStats();
     renderTodos();
   } catch (e) {
@@ -275,15 +276,23 @@ buscaNome.addEventListener("input", () => { clearTimeout(buscaTimer); buscaTimer
 filtroNota.addEventListener("change", recarregarTodos);
 ordemTempo.addEventListener("change", recarregarTodos);
 
-// --- Tabela todos os mapas ---
+// --- Tabela todos os mapas (com paginação) ---
 const tbodyTodos = html`<tbody></tbody>`;
+const paginacaoTodos = html`<div style="display:flex;gap:.75rem;align-items:center;justify-content:center;margin-top:1rem;"></div>`;
+let paginaTodos = 1;
+const porPagina = 10;
 function renderTodos() {
   tbodyTodos.innerHTML = "";
+  paginacaoTodos.innerHTML = "";
   if (!todosMapas.length) {
     tbodyTodos.append(html`<tr><td colspan="7" class="empty-state">Nenhum mapa público encontrado.</td></tr>`);
     return;
   }
-  for (const m of todosMapas) {
+  const totalPaginas = Math.max(1, Math.ceil(todosMapas.length / porPagina));
+  if (paginaTodos > totalPaginas) paginaTodos = totalPaginas;
+  const inicio = (paginaTodos - 1) * porPagina;
+  const pagina = todosMapas.slice(inicio, inicio + porPagina);
+  for (const m of pagina) {
     const eMeu      = meusIdsSet.has(m.id_mapa);
     const jaCopiado = minhasOrigensSet.has(m.id_mapa);
 
@@ -347,6 +356,18 @@ function renderTodos() {
       tdAcoes,
     );
     tbodyTodos.append(tr);
+  }
+
+  if (totalPaginas > 1) {
+    const prev = html`<button class="btn-sm">‹ Anterior</button>`;
+    const next = html`<button class="btn-sm">Próxima ›</button>`;
+    prev.disabled = paginaTodos <= 1;
+    next.disabled = paginaTodos >= totalPaginas;
+    prev.addEventListener("click", () => { paginaTodos--; renderTodos(); });
+    next.addEventListener("click", () => { paginaTodos++; renderTodos(); });
+    paginacaoTodos.append(prev,
+      html`<span style="font-size:.82rem;color:var(--theme-foreground-muted);">Página ${paginaTodos} de ${totalPaginas}</span>`,
+      next);
   }
 }
 
@@ -563,6 +584,7 @@ panelTodos.append(html`<div>
     <thead><tr><th>Preview</th><th>Nome</th><th class="col-prof">Professor</th><th>Avaliação</th><th class="col-data">Data</th><th>Origem</th><th>Ação</th></tr></thead>
     ${tbodyTodos}
   </table>
+  ${paginacaoTodos}
 </div>`);
 
 panelMeus.append(html`<table class="maps-table">
