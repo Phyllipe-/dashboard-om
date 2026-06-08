@@ -212,7 +212,10 @@ function renderTabela() {
     const tdNome   = document.createElement("td"); tdNome.append(linkNome);
     const tdEmail  = document.createElement("td"); tdEmail.style.color = "var(--theme-foreground-muted)"; tdEmail.textContent = a.email;
     const tdLogin  = document.createElement("td"); tdLogin.append(loginSpan, loginInput);
-    const tdIdade  = document.createElement("td"); tdIdade.textContent = `${a.idade} anos${a.escolaridade ? " · " + a.escolaridade : ""}`;
+    const faixa = a.menor_idade === true ? "Menor de idade"
+                : a.menor_idade === false ? "Maior de idade"
+                : (a.idade != null ? `${a.idade} anos` : "—");
+    const tdIdade  = document.createElement("td"); tdIdade.textContent = `${faixa}${a.escolaridade ? " · " + a.escolaridade : ""}`;
     const tdBadge  = document.createElement("td");
     const badge    = document.createElement("span"); badge.className = `badge ${a.ativo ? "badge-ativo" : "badge-inativo"}`; badge.textContent = a.ativo ? "Ativo" : "Inativo";
     tdBadge.append(badge);
@@ -276,7 +279,7 @@ display(html`<div>
     ${searchInput}
   </div>
   <table class="alunos-table">
-    <thead><tr><th>Nome</th><th>Email</th><th>Login</th><th>Idade / Escolaridade</th><th>Status</th><th>Ação</th></tr></thead>
+    <thead><tr><th>Nome</th><th>Email</th><th>Login</th><th>Maioridade / Escolaridade</th><th>Status</th><th>Ação</th></tr></thead>
     ${tbody}
   </table>
 </div>`);

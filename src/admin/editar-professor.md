@@ -296,14 +296,7 @@ btnSalvar.addEventListener("click", async () => {
   const dados = {};
   if (fNome.value.trim()    !== (prof.nome_completo      ?? "")) dados.nome_completo      = fNome.value.trim();
   if (fEmail.value.trim()   !== (prof.email              ?? "")) dados.email              = fEmail.value.trim();
-  if (fNasc.value           !== (prof.data_nascimento    ?? "")) dados.data_nascimento    = fNasc.value;
   if (fFormacao.value.trim()!== (prof.formacao_academica ?? prof.registro_profissional ?? "")) dados.formacao_academica = fFormacao.value.trim();
-  if (telefone              !== mascaraTelefone(prof.telefone ?? "")) dados.telefone      = telefone || null;
-  if (tipoEndereco          !== (prof.tipo_endereco      ?? "pessoal")) dados.tipo_endereco   = tipoEndereco;
-  if (cep                   !== mascaraCep(prof.cep      ?? "")) dados.cep                 = cep || null;
-  if (fLogradouro.value.trim() !== (prof.logradouro      ?? "")) dados.logradouro          = fLogradouro.value.trim() || null;
-  const instAtual = tipoEndereco === "profissional" ? (fInstituicao.value.trim() || null) : null;
-  if (instAtual !== (prof.nome_instituicao ?? null))               dados.nome_instituicao  = instAtual;
   if (fSenha.value) {
     dados.nova_senha = fSenha.value;
     if (senhaGerada) dados.senha_provisoria = true;   // força troca no 1º login
@@ -342,27 +335,12 @@ container.replaceWith(html`<div class="form-page">
 
     <div class="form-field full"><label>Nome completo</label>${fNome}</div>
 
-    <div class="form-field"><label>E-mail</label>${fEmail}</div>
-    <div class="form-field"><label>Data de nascimento</label>${fNasc}</div>
+    <div class="form-field full"><label>E-mail</label>${fEmail}</div>
 
-    <div class="form-field"><label>Telefone</label>${fTelefone}${hintTel}</div>
     <div class="form-field full">
       <label>Formação acadêmica</label>
       ${fFormacao}
       <span class="hint">Graduação, pós-graduação, especializações etc. — opcional.</span>
-    </div>
-
-    <div class="endereco-section">
-      <div class="endereco-section-title">Endereço</div>
-      <div class="radio-group">
-        <label>${rPessoal} Pessoal</label>
-        <label>${rProfissional} Profissional</label>
-      </div>
-      <div class="endereco-fields">
-        ${wrapInstituicao}
-        <div class="form-field cep-wrap"><label>CEP</label>${fCep}${hintCep}</div>
-        <div class="form-field"><label>Logradouro completo</label>${fLogradouro}</div>
-      </div>
     </div>
 
     <div class="form-field full">

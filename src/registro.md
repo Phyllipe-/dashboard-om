@@ -230,9 +230,9 @@ btnSalvar.addEventListener("click", async () => {
   const senha2   = fSenha2.value;
 
   // Validações obrigatórias
-  if (!fNome.value.trim() || !email || !senha || !fNasc.value) {
+  if (!fNome.value.trim() || !email || !senha) {
     alertDiv.className   = "alert alert-error";
-    alertDiv.textContent = "Preencha todos os campos obrigatórios (Nome, E-mail, Senha, Data de nascimento).";
+    alertDiv.textContent = "Preencha todos os campos obrigatórios (Nome, E-mail, Senha).";
     return;
   }
   if (senha !== senha2) {
@@ -267,15 +267,7 @@ btnSalvar.addEventListener("click", async () => {
     nome_completo:      fNome.value.trim(),
     email,
     senha,
-    data_nascimento:    fNasc.value,
     formacao_academica: fFormacao.value.trim() || null,
-    telefone:           telefone || null,
-    tipo_endereco:      tipoEndereco,
-    nome_instituicao:   tipoEndereco === "profissional" ? (fInstituicao.value.trim() || null) : null,
-    cep:                cep || null,
-    logradouro:         fLogradouro.value.trim() || null,
-    // Validação por e-mail: desabilitada
-    // email_verificado: EMAIL_VALIDATION_ENABLED ? false : true,
   };
 
   btnSalvar.disabled    = true;
@@ -331,11 +323,6 @@ display(html`<div class="form-page">
     </div>
 
     <div class="form-field">
-      <label>Data de nascimento *</label>
-      ${fNasc}
-    </div>
-
-    <div class="form-field">
       <label>Senha *</label>
       ${fSenha}
       <span class="hint">Mínimo de 6 caracteres.</span>
@@ -346,31 +333,17 @@ display(html`<div class="form-page">
       ${fSenha2}
     </div>
 
-    <div class="form-field">
-      <label>Telefone</label>
-      ${fTelefone}
-      ${hintTel}
-    </div>
-
     <div class="form-field full">
       <label>Formação acadêmica</label>
       ${fFormacao}
       <span class="hint">Graduação, pós-graduação, especializações etc. — opcional.</span>
     </div>
 
-    <div class="endereco-section">
-      <div class="endereco-section-title">Endereço</div>
-      <div class="radio-group">
-        <label>${rPessoal} Pessoal</label>
-        <label>${rProfissional} Profissional</label>
-      </div>
-      <div class="endereco-fields">
-        ${wrapInstituicao}
-        <div class="form-field cep-wrap"><label>CEP</label>${fCep}${hintCep}</div>
-        <div class="form-field"><label>Logradouro completo</label>${fLogradouro}</div>
-      </div>
-    </div>
+  </div>
 
+  <div style="font-size:.8rem;color:var(--theme-foreground-muted);background:var(--theme-background-alt);border:1px solid var(--theme-foreground-faintest);border-radius:8px;padding:.7rem .9rem;margin-top:1.25rem;line-height:1.45;">
+    Coletamos apenas o mínimo necessário para operar o sistema. O tratamento dos dados segue a
+    <a href="/privacidade" target="_blank" style="color:var(--om-accent,#4a90e2);font-weight:600;">Política de Privacidade</a>.
   </div>
 
   <div class="form-actions">

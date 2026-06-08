@@ -107,6 +107,7 @@ const fSenha     = html`<input type="password" placeholder="Deixe em branco para
 const fTelefone  = html`<input type="tel"  placeholder="(XX) XXXXX-XXXX" />`;
 const fCep       = html`<input type="text" placeholder="00000-000" />`;
 const fLogradouro= html`<input type="text" placeholder="Rua, número, complemento, bairro…" />`;
+const chkMenor   = html`<input type="checkbox" />`;
 
 const loginFeedback = html`<span class="field-feedback"></span>`;
 const telFeedback   = html`<span class="field-feedback"></span>`;
@@ -153,6 +154,7 @@ try {
   fTelefone.value  = aluno.telefone ? mascaraTelefone(aluno.telefone) : "";
   fCep.value       = aluno.cep       ? mascaraCep(aluno.cep)           : "";
   fLogradouro.value= aluno.logradouro ?? "";
+  chkMenor.checked = aluno.menor_idade === true;
   [...fEscol.options].forEach(o => { if (o.value === aluno.escolaridade) o.selected = true; });
   // dispara verificação do login pré-carregado
   if (fLogin.value) scheduleLoginCheck(fLogin.value.trim());
@@ -213,21 +215,12 @@ btnSalvar.addEventListener("click", async () => {
   const dados = {};
   if (fNome.value.trim()  !== (aluno.nome_completo ?? ""))     dados.nome_completo   = fNome.value.trim();
   if (fEmail.value.trim() !== (aluno.email ?? ""))             dados.email           = fEmail.value.trim();
-  if (fNasc.value         !== (aluno.data_nascimento ?? ""))   dados.data_nascimento = fNasc.value;
   if (fEscol.value        !== (aluno.escolaridade ?? ""))      dados.escolaridade    = fEscol.value;
   if (fSenha.value)                                            dados.nova_senha      = fSenha.value;
-
-  // telefone: compare raw digits
-  const telRaw     = fTelefone.value.replace(/\D/g, "");
-  const telOrigRaw = (aluno.telefone ?? "").replace(/\D/g, "");
-  if (telRaw !== telOrigRaw) dados.telefone = fTelefone.value || null;
-
-  const cepRaw     = fCep.value.replace(/\D/g, "");
-  const cepOrigRaw = (aluno.cep ?? "").replace(/\D/g, "");
-  if (cepRaw !== cepOrigRaw) dados.cep = fCep.value || null;
-
-  const logVal = fLogradouro.value.trim();
-  if (logVal !== (aluno.logradouro ?? "")) dados.logradouro = logVal || null;
+  if (chkMenor.checked    !== (aluno.menor_idade === true)) {
+    dados.menor_idade = chkMenor.checked;
+    if (chkMenor.checked) dados.declaracao = true;   // re-registra a declaração ao marcar como menor
+  }
 
   // login via separate route
   const novoLogin  = fLogin.value.trim();
@@ -277,21 +270,9 @@ container.replaceWith(html`<div class="form-page">
       ${loginFeedback}
       <span class="hint">Identificador curto usado no app.</span>
     </div>
-    <div class="form-field"><label>Data de nascimento</label>${fNasc}</div>
     <div class="form-field"><label>Escolaridade</label>${fEscol}</div>
-    <div class="form-field full">
-      <label>Telefone</label>${fTelefone}
-      ${telFeedback}
-    </div>
+    <label class="section-title" style="display:flex;align-items:center;gap:.5rem;cursor:pointer;border-top:none;padding-top:0;">${chkMenor} Aluno é menor de idade</label>
     <div class="form-field full"><label>Nova senha</label>${fSenha}<span class="hint">Deixe em branco para manter a senha atual.</span></div>
-    <div class="section-title">Endereço (opcional)</div>
-    <div class="form-field cep-wrap">
-      <label>CEP</label>${fCep}${cepFeedback}
-    </div>
-    <div class="form-field">
-      <label>Logradouro</label>${fLogradouro}
-      <span class="hint">Rua, número, complemento, bairro, cidade…</span>
-    </div>
   </div>
   <div class="form-actions">
     ${btnSalvar}

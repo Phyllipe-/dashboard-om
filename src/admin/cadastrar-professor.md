@@ -204,9 +204,9 @@ btnSalvar.addEventListener("click", async () => {
   const cep      = fCep.value.trim();
 
   // Validações
-  if (!fNome.value.trim() || !fEmail.value.trim() || !fSenha.value || !fNasc.value) {
+  if (!fNome.value.trim() || !fEmail.value.trim() || !fSenha.value) {
     alertDiv.className   = "alert alert-error";
-    alertDiv.textContent = "Preencha todos os campos obrigatórios (Nome, E-mail, Senha, Data de nascimento).";
+    alertDiv.textContent = "Preencha todos os campos obrigatórios (Nome, E-mail, Senha).";
     return;
   }
   if (telefone && !validarTelefone(telefone)) {
@@ -226,13 +226,7 @@ btnSalvar.addEventListener("click", async () => {
     nome_completo:      fNome.value.trim(),
     email:              fEmail.value.trim(),
     senha:              fSenha.value,
-    data_nascimento:    fNasc.value,
     formacao_academica: fFormacao.value.trim(),
-    telefone:           telefone || null,
-    tipo_endereco:      tipoEndereco,
-    nome_instituicao:   tipoEndereco === "profissional" ? (fInstituicao.value.trim() || null) : null,
-    cep:                cep || null,
-    logradouro:         fLogradouro.value.trim() || null,
   };
 
   btnSalvar.disabled    = true;
@@ -282,18 +276,6 @@ display(html`<div class="form-page">
       <span class="hint">O professor poderá alterá-la após o primeiro acesso.</span>
     </div>
 
-    <!-- Nascimento + Telefone -->
-    <div class="form-field">
-      <label>Data de nascimento *</label>
-      ${fNasc}
-    </div>
-
-    <div class="form-field">
-      <label>Telefone</label>
-      ${fTelefone}
-      ${hintTel}
-    </div>
-
     <!-- Formação acadêmica -->
     <div class="form-field full">
       <label>Formação acadêmica</label>
@@ -301,29 +283,11 @@ display(html`<div class="form-page">
       <span class="hint">Graduação, pós-graduação, especializações etc. — opcional.</span>
     </div>
 
-    <!-- Endereço -->
-    <div class="endereco-section">
-      <div class="endereco-section-title">Endereço</div>
+  </div>
 
-      <div class="radio-group">
-        <label>${rPessoal} Pessoal</label>
-        <label>${rProfissional} Profissional</label>
-      </div>
-
-      <div class="endereco-fields">
-        ${wrapInstituicao}
-        <div class="form-field cep-wrap">
-          <label>CEP</label>
-          ${fCep}
-          ${hintCep}
-        </div>
-        <div class="form-field">
-          <label>Logradouro completo</label>
-          ${fLogradouro}
-        </div>
-      </div>
-    </div>
-
+  <div style="font-size:.8rem;color:var(--theme-foreground-muted);background:var(--theme-background-alt);border:1px solid var(--theme-foreground-faintest);border-radius:8px;padding:.7rem .9rem;margin-top:1.25rem;line-height:1.45;">
+    Coletamos apenas o mínimo necessário para operar o sistema. O tratamento dos dados segue a
+    <a href="/privacidade" target="_blank" style="color:var(--om-accent,#4a90e2);font-weight:600;">Política de Privacidade</a>.
   </div>
 
   <div class="form-actions">
