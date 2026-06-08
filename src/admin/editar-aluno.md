@@ -91,6 +91,7 @@ function validarCep(v) { return v.replace(/\D/g, "").length === 8; }
 
 // ── Fields ────────────────────────────────────────────────────────────────────
 const fNome     = html`<input type="text"     placeholder="Nome completo do aluno" />`;
+const fNomeSocial = html`<input type="text"   placeholder="Como o aluno prefere ser chamado (opcional)" />`;
 const fEmail    = html`<input type="email"    placeholder="email@exemplo.com" />`;
 const fLogin    = html`<input type="text"     placeholder="Ex: joao.silva" />`;
 const fNasc     = html`<input type="date" />`;
@@ -148,6 +149,7 @@ let aluno;
 try {
   aluno = await fetchAluno(idAluno);
   fNome.value      = aluno.nome_completo  ?? "";
+  fNomeSocial.value= aluno.nome_social    ?? "";
   fEmail.value     = aluno.email          ?? "";
   fLogin.value     = aluno.login          ?? aluno.email?.split("@")[0] ?? "";
   fNasc.value      = aluno.data_nascimento ?? "";
@@ -214,6 +216,7 @@ btnSalvar.addEventListener("click", async () => {
 
   const dados = {};
   if (fNome.value.trim()  !== (aluno.nome_completo ?? ""))     dados.nome_completo   = fNome.value.trim();
+  if (fNomeSocial.value.trim() !== (aluno.nome_social ?? ""))  dados.nome_social     = fNomeSocial.value.trim() || null;
   if (fEmail.value.trim() !== (aluno.email ?? ""))             dados.email           = fEmail.value.trim();
   if (fEscol.value        !== (aluno.escolaridade ?? ""))      dados.escolaridade    = fEscol.value;
   if (fSenha.value)                                            dados.nova_senha      = fSenha.value;
@@ -264,6 +267,7 @@ container.replaceWith(html`<div class="form-page">
   <p class="form-subtitle">Edite os dados do aluno. Campos em branco não serão alterados.</p>
   <div class="form-grid">
     <div class="form-field full"><label>Nome completo</label>${fNome}</div>
+    <div class="form-field full"><label>Nome social</label>${fNomeSocial}<span class="hint">Nome pelo qual o aluno prefere ser tratado.</span></div>
     <div class="form-field"><label>Email</label>${fEmail}</div>
     <div class="form-field">
       <label>Login *</label>${fLogin}

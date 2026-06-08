@@ -179,7 +179,8 @@ function renderTabela() {
     });
     const linkNome = document.createElement("a");
     linkNome.href = `/visualizacao/dados-aluno?id=${a.id_aluno}`;
-    linkNome.textContent = a.nome_completo;
+    linkNome.textContent = a.nome_social || a.nome_completo;
+    if (a.nome_social) linkNome.title = `Nome completo: ${a.nome_completo}`;
     linkNome.style.cssText = "font-weight:600;color:inherit;text-decoration:none;";
     linkNome.onmouseenter = () => linkNome.style.textDecoration = "underline";
     linkNome.onmouseleave = () => linkNome.style.textDecoration = "none";

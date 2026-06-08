@@ -80,6 +80,7 @@ if (headerLogout) headerLogout.addEventListener("click", logout);
 
 // ── Campos ──────────────────────────────────────────────────────────────────
 const fNome  = html`<input type="text"     placeholder="Nome completo do aluno" />`;
+const fNomeSocial = html`<input type="text" placeholder="Como o aluno prefere ser chamado (opcional)" />`;
 const fEmail = html`<input type="email"    placeholder="email@exemplo.com" autocomplete="off" />`;
 const fLogin = html`<input type="text"     placeholder="Ex: joao.silva" autocomplete="off" />`;
 const fSenha = html`<input type="password" placeholder="Senha inicial" />`;
@@ -161,6 +162,7 @@ btnSalvar.addEventListener("click", async () => {
 
   const dados = {
     nome_completo: fNome.value.trim(),
+    nome_social:   fNomeSocial.value.trim() || null,
     email:         fEmail.value.trim(),
     login:         loginVal,
     senha:         fSenha.value,
@@ -176,7 +178,7 @@ btnSalvar.addEventListener("click", async () => {
     await cadastrarAluno(dados);
     alertDiv.className = "alert alert-success";
     alertDiv.textContent = `Aluno "${dados.nome_completo}" cadastrado com sucesso!`;
-    fNome.value = ""; fEmail.value = ""; fLogin.value = ""; delete fLogin.dataset.edited;
+    fNome.value = ""; fNomeSocial.value = ""; fEmail.value = ""; fLogin.value = ""; delete fLogin.dataset.edited;
     fSenha.value = ""; fEscol.value = "";
     chkMenor.checked = false; chkDeclaracao.checked = false;
     declaracaoWrap.className = "declaracao-wrap";
@@ -195,6 +197,7 @@ display(html`<div class="form-page">
   <p class="form-subtitle">O aluno será vinculado automaticamente ao professor logado.</p>
   <div class="form-grid">
     <div class="form-field full"><label>Nome completo *</label>${fNome}</div>
+    <div class="form-field full"><label>Nome social</label>${fNomeSocial}<span class="hint">Nome pelo qual o aluno prefere ser tratado. Opcional.</span></div>
     <div class="form-field"><label>Email *</label>${fEmail}</div>
     <div class="form-field">
       <label>Login *</label>${fLogin}
