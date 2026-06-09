@@ -306,6 +306,29 @@ function makeBadgeSmall(ok) {
 
 // Agrega dados do log
 const ACAO_NOME = { 0: "Passos", 1: "Giros" };
+
+// Tradução dos objetos de colisão (objectID = Prop.ID do ENA, inglês PascalCase).
+const OBJ_NOME = {
+  AlarmClock:"Despertador", Armchair:"Poltrona", AttentionMarkerFloor:"Piso de alerta",
+  BedTable:"Mesa de cabeceira", Bird:"Pássaro", Blender:"Liquidificador",
+  BrickWall:"Parede de tijolo", Bureau:"Escrivaninha", CarpetFloor:"Piso de carpete",
+  Cat:"Gato", Cellphone:"Celular", CementFloor:"Piso de cimento", CeramicFloor:"Piso de cerâmica",
+  ClosedDoor:"Porta fechada", CobblestoneFloor:"Piso de paralelepípedo", Computer:"Computador",
+  Cone:"Cone", CopyMachine:"Copiadora", CouplesBed:"Cama de casal", DiningTable:"Mesa de jantar",
+  DirectionMarkerFloor:"Piso direcional", Dog:"Cachorro", Fan:"Ventilador", FoodMixer:"Batedeira",
+  Fridge:"Geladeira", Frog:"Sapo", GenericWall:"Parede", Glass:"Vidro", GlassFloor:"Piso de vidro",
+  GlassWindow:"Janela de vidro", GrassFloor:"Piso de grama", Guardrail:"Guarda-corpo", Guitar:"Violão",
+  HairDryer:"Secador de cabelo", Insect:"Inseto", IronCloset:"Armário de ferro", Kid:"Criança",
+  Lamp:"Luminária", LeafFloor:"Piso de folhas", LockedDoor:"Porta trancada", MetalFloor:"Piso de metal",
+  Microwave:"Micro-ondas", OpenDoor:"Porta aberta", Painting:"Quadro", PavingStoneFloor:"Piso de pedra",
+  Piano:"Piano", Plant:"Planta", PlasterWall:"Parede de gesso", PlasticWall:"Parede de plástico",
+  Printer:"Impressora", Radio:"Rádio", SandFloor:"Piso de areia", Shelf:"Estante",
+  SinglesBed:"Cama de solteiro", Sink:"Pia", SnowFloor:"Piso de neve", Sofa:"Sofá", Stairs:"Escada",
+  StoneFloor:"Piso de pedra", Stove:"Fogão", TV:"TV", Table:"Mesa", TeaKettle:"Chaleira",
+  TileWall:"Parede de azulejo", Toilet:"Vaso sanitário", TrashCan:"Lixeira", Wardrobe:"Guarda-roupa",
+  WaterFloor:"Água", WoodFloor:"Piso de madeira", WoodenWall:"Parede de madeira", WoodenWindow:"Janela de madeira",
+  "No ID":"Outro objeto",
+};
 const logObjs   = sessao.dados_log?.objectives ?? [];
 
 const acoesMap = {};
@@ -338,7 +361,7 @@ const acoesRows = Object.entries(acoesMap)
 
 const colisRows = Object.entries(colisMap)
   .sort((a, b) => b[1] - a[1])
-  .map(([objId, qt]) => ({ label: objId, value: String(qt), color: "#b91c1c" }));
+  .map(([objId, qt]) => ({ label: OBJ_NOME[objId] ?? objId, value: String(qt), color: "#b91c1c" }));
 
 const objRows = logObjs.map(obj => ({
   label: obj.objectiveName ?? "?",
