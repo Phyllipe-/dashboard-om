@@ -295,6 +295,7 @@ export default {
             _orderState[secao].splice(idx, 1);
             _orderState[secao].splice(idx - 1, 0, chave);
             _renderPers();
+            _aplicarOrdemVivo();
             _persistPrefs();
           });
           const btnDn = document.createElement('button');
@@ -305,6 +306,7 @@ export default {
             _orderState[secao].splice(idx, 1);
             _orderState[secao].splice(idx + 1, 0, chave);
             _renderPers();
+            _aplicarOrdemVivo();
             _persistPrefs();
           });
           orderWrap.append(btnUp, btnDn);
@@ -355,6 +357,7 @@ export default {
         _aplicarVivo(q.chave, _persState[q.chave]);
       }
       _renderPers();
+      _aplicarOrdemVivo();
       _persistPrefs();
     }
 
@@ -363,6 +366,41 @@ export default {
       document.querySelectorAll('[data-quadro-chave="' + chave + '"]').forEach(el => {
         el.style.display = visivel ? '' : 'none';
       });
+    }
+
+    // Reordena os quadros ao vivo, dentro de cada container pai, conforme _orderState.
+    // Move (nao clona) os elementos para manter plots/mapas vivos; preserva a posicao
+    // de nos que nao sao quadros usando comentarios-marcadores.
+    function _aplicarOrdemVivo() {
+      const pos = {};
+      for (const q of _persData) {
+        pos[q.chave] = (q.ordem != null) ? q.ordem : (q.ordem_padrao != null ? q.ordem_padrao : 999);
+      }
+      for (const chaves of Object.values(_orderState)) {
+        chaves.forEach((chave, i) => { pos[chave] = i; });
+      }
+      const porPai = new Map();
+      document.querySelectorAll('[data-quadro-chave]').forEach(el => {
+        if (!el.parentNode) return;
+        if (!porPai.has(el.parentNode)) porPai.set(el.parentNode, []);
+        porPai.get(el.parentNode).push(el);
+      });
+      for (const [pai, els] of porPai) {
+        if (els.length < 2) continue;
+        const markers = els.map(el => {
+          const m = document.createComment('q');
+          pai.insertBefore(m, el);
+          pai.removeChild(el);
+          return m;
+        });
+        const ordenados = [...els].sort((a, b) =>
+          (pos[a.dataset.quadroChave] ?? 999) - (pos[b.dataset.quadroChave] ?? 999)
+        );
+        markers.forEach((m, i) => {
+          pai.insertBefore(ordenados[i], m);
+          pai.removeChild(m);
+        });
+      }
     }
 
     let _persistTimer = null;
