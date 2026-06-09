@@ -5,6 +5,10 @@ const METRICA_DESC = {
   precisao:  { titulo: "Precisão",  texto: "Mostra o quanto o aluno evitou bater em obstáculos durante o percurso. Quanto menos colisões, maior a precisão." },
   fluidez:   { titulo: "Fluidez",   texto: "Mostra o quanto o caminho foi direto, sem voltas ou desvios desnecessários. Quanto mais perto do menor caminho possível, maior a fluidez." },
   objetivos: { titulo: "Objetivos", texto: "Mostra quantas metas do percurso o aluno conseguiu concluir. Quanto mais metas alcançadas, maior o valor." },
+  exploracao:   { titulo: "Exploração",   texto: "Mostra o quanto do mapa o aluno percorreu. Quanto mais áreas diferentes ele visitou, maior a exploração." },
+  lateralidade: { titulo: "Lateralidade", texto: "Mostra o equilíbrio entre o uso do lado direito e do esquerdo durante o percurso. Quanto mais parelho entre os dois lados, maior o valor." },
+  concentracao: { titulo: "Concentração", texto: "Mostra o quanto o aluno se manteve nas mesmas regiões do mapa. Quanto mais o movimento se concentrou nas áreas mais visitadas, maior a concentração." },
+  orientacao:   { titulo: "Orientação",   texto: "Mostra o quanto o aluno se manteve orientado, sem girar em excesso. Quanto menos giros em relação aos movimentos, maior a orientação." },
 };
 
 /** Normaliza um rótulo (ex.: "Objetivos %", "Precisão média") para a chave da métrica. */
@@ -13,6 +17,10 @@ export function metricaKey(label) {
   if (l.startsWith("precis"))  return "precisao";
   if (l.startsWith("fluid"))   return "fluidez";
   if (l.startsWith("objetiv")) return "objetivos";
+  if (l.startsWith("explora")) return "exploracao";
+  if (l.startsWith("lateral")) return "lateralidade";
+  if (l.startsWith("concentr")) return "concentracao";
+  if (l.startsWith("orienta")) return "orientacao";
   return null;
 }
 

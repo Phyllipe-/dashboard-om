@@ -3749,15 +3749,14 @@ function calcularComportamental(dadosLog, rows, cols, giros) {
   const totalTiles  = (rows * cols) || 1;
   const exploracaoScore = Math.min(tilesUnicos / totalTiles, 1) * 100;
 
-  // 2. Controle — ausência de colisões (taxa colisão/ação invertida)
+  // 2. Precisão — colisões evitadas (mesma fórmula do radar: colisões sobre ações+colisões)
   let totalAcoes = 0, totalColisoes = 0;
   for (const obj of dadosLog?.objectives ?? []) {
     totalAcoes    += (obj.actions    ?? []).length;
     totalColisoes += (obj.collisions ?? []).length;
   }
-  const taxaColisao    = totalAcoes > 0 ? totalColisoes / totalAcoes : 0;
-  // 0 colisões = 100 pts; >=20% de ações são colisões = 0 pts
-  const controleScore  = Math.max(0, Math.min(100, (1 - taxaColisao * 5) * 100));
+  const totalEventos  = totalAcoes + totalColisoes;
+  const precisaoScore = totalEventos > 0 ? (1 - totalColisoes / totalEventos) * 100 : 100;
 
   // 3. Lateralidade — equilíbrio entre direita e esquerda
   const lat            = extrairLateralidade(dadosLog);
@@ -3777,7 +3776,7 @@ function calcularComportamental(dadosLog, rows, cols, giros) {
 
   const dimensoes = [
     { nome: "Exploração",     score: exploracaoScore,    desc: "Área do mapa percorrida" },
-    { nome: "Controle",       score: controleScore,      desc: "Ausência de colisões" },
+    { nome: "Precisão",       score: precisaoScore,      desc: "Colisões evitadas" },
     { nome: "Lateralidade",   score: equilibrioScore,    desc: "Equilíbrio direita / esquerda" },
     { nome: "Concentração",   score: concentracaoScore,  desc: "Foco nas áreas mais visitadas" },
     { nome: "Orientação",     score: orientacaoScore,    desc: "Navegação sem giros excessivos" },
@@ -3821,8 +3820,8 @@ function _renderizarComportamental() {
 
     const lbl = document.createElement("span");
     lbl.style.cssText = "font-size:.72rem;color:var(--theme-foreground-muted);white-space:nowrap;";
-    lbl.title = d.desc;
     lbl.textContent = d.nome;
+    attachMetricaTip(lbl, d.nome);
 
     const track = document.createElement("div");
     track.style.cssText = "background:var(--theme-background-alt,#e8e8e8);border-radius:4px;height:10px;overflow:hidden;";
