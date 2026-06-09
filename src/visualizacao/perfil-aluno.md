@@ -302,6 +302,7 @@ toc: false
 ```js
 import { requireAuth, logout } from "../auth.js";
 import { fetchAlunos, fetchAluno, fetchSessoes, fetchSessao, fetchAnalises, fetchMetricas, fetchPreferenciasQuadros } from "../api.js";
+import { attachMetricaTip } from "../metricas.js";
 import * as Plot from "npm:@observablehq/plot";
 import * as d3   from "npm:d3";
 import { detectarGiros, MARCADORES_GIRO } from "../lib/sessao/giros.js";
@@ -4000,6 +4001,7 @@ function renderizarEvolucaoPorMapa(sessoesComMetricas) {
         txt.style.cssText = `font-size:.72rem;font-weight:${isDestaque ? 700 : 600};
           color:${isDestaque ? COR_RANGE[i] : "var(--theme-foreground-muted)"};white-space:nowrap;`;
         txt.textContent = m;
+        attachMetricaTip(txt, m);
         const media = document.createElement("span");
         media.style.cssText = `font-size:.65rem;color:var(--theme-foreground-faint);margin-left:1px;white-space:nowrap;`;
         media.textContent = medias[m] != null ? `⌀ ${Math.round(medias[m])}%` : "";

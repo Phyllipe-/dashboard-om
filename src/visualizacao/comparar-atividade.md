@@ -70,6 +70,7 @@ toc: false
 ```js
 import { requireAuth, logout } from "../auth.js";
 import { fetchAtividades, fetchAtividade, fetchSessoes, fetchMetricasAluno } from "../api.js";
+import { applyMetricaTips } from "../metricas.js";
 import * as Plot from "npm:@observablehq/plot";
 import * as vl from "npm:vega-lite-api";
 import * as vega from "npm:vega";
@@ -133,7 +134,7 @@ function kpiCard(label, valor, sub, accentColor) {
   const d = document.createElement("div");
   d.className = "kpi-card";
   d.innerHTML = `
-    <div class="kpi-label">${label}</div>
+    <div class="kpi-label metrica">${label}</div>
     <div class="kpi-valor" style="color:${accentColor ?? "inherit"}">${valor}</div>
     ${sub ? `<div class="kpi-sub" style="color:${accentColor ?? "#888"}">${sub}</div>` : ""}`;
   return d;
@@ -213,6 +214,7 @@ async function renderizar(idAtividade) {
       return d;
     })()
   );
+  applyMetricaTips(kpisEl);
 
   // ── Gráficos ───────────────────────────────────────────────────────────────
   chartsEl.replaceChildren();

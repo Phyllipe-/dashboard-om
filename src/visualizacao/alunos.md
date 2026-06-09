@@ -166,6 +166,7 @@ toc: false
 ```js
 import { requireAuth, logout } from "../auth.js";
 import { fetchAlunos, fetchSessoes, fetchMetricasAluno, buscarTodosAlunos, apropriarAluno, fetchAtividades, fetchAtividade } from "../api.js";
+import { applyMetricaTips } from "../metricas.js";
 
 const COR_MAPA = ["#4a90e2","#5ba85b","#e07b54","#c9a227","#9b59b6","#2eaaa8"];
 
@@ -226,7 +227,7 @@ function makeRadarVazio(color) {
     const guide = `<line x1="${gx}" y1="${gy}" x2="${lx}" y2="${ly}" stroke="rgba(128,128,128,.18)" stroke-width=".6"/>`;
     return `
       ${guide}
-      <text x="${lx}" y="${ly - 6}" font-size="10.5" font-weight="600" style="fill:var(--theme-foreground)"
+      <text class="metrica" x="${lx}" y="${ly - 6}" font-size="10.5" font-weight="600" style="fill:var(--theme-foreground);cursor:help"
             text-anchor="${anchor}" font-family="system-ui,sans-serif">${e.label}</text>
       <text x="${lx}" y="${ly + 8}" font-size="11" font-weight="700" fill="${color.stroke}" opacity=".35"
             text-anchor="${anchor}" font-family="system-ui,sans-serif">—</text>`;
@@ -288,7 +289,7 @@ function makeRadar(m, color) {
     return `
       ${guide}
       <circle cx="${dx}" cy="${dy}" r="3.5" fill="${color.stroke}"/>
-      <text x="${lx}" y="${ly - 6}" font-size="10.5" font-weight="600" style="fill:var(--theme-foreground)"
+      <text class="metrica" x="${lx}" y="${ly - 6}" font-size="10.5" font-weight="600" style="fill:var(--theme-foreground);cursor:help"
             text-anchor="${anchor}" font-family="system-ui,sans-serif">${e.label}</text>
       <text x="${lx}" y="${ly + 8}" font-size="11" font-weight="700" fill="${color.stroke}"
             text-anchor="${anchor}" font-family="system-ui,sans-serif">${Math.round(e.valor)}%</text>
@@ -434,6 +435,7 @@ function abrirModal(a) {
   overlay.querySelector(".modal-close").addEventListener("click", () => overlay.remove());
   overlay.querySelector("#modal-fechar").addEventListener("click", () => overlay.remove());
   document.body.append(overlay);
+  applyMetricaTips(overlay);
 
   // ── Buscar sessões e popular painel ────────────────────────────────────────
   const corpo = overlay.querySelector("#md-corpo");
@@ -664,6 +666,7 @@ function renderGrid() {
   }
 
   for (const a of lista) grid.append(renderCard(a));
+  applyMetricaTips(grid);
 }
 
 searchInput.addEventListener("input", () => {

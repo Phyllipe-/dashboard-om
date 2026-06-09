@@ -34,6 +34,7 @@ toc: false
 ```js
 import { requireAuth, logout } from "../auth.js";
 import { fetchAluno, fetchSessoes, fetchSessao, fetchAnalises } from "../api.js";
+import { applyMetricaTips } from "../metricas.js";
 import { detectarGiros } from "../lib/sessao/giros.js";
 
 const currentUser = requireAuth();
@@ -150,9 +151,10 @@ thead.innerHTML = `<tr>
   <th style="text-align:center">Nº Ações</th>
   <th style="text-align:center">Nº Colisões</th>
   <th style="text-align:center">Giros</th>
-  <th style="text-align:center">Objetivos</th>
+  <th style="text-align:center" class="metrica">Objetivos</th>
 </tr>`;
 table.append(thead, tbody);
+applyMetricaTips(thead);
 
 display(html`<div>
   <div class="aluno-header">

@@ -55,6 +55,7 @@ toc: false
 ```js
 import { requireAuth, logout } from "../auth.js";
 import { fetchSessao, fetchMetricas, fetchSessoes } from "../api.js";
+import { attachMetricaTip } from "../metricas.js";
 
 requireAuth();
 const headerLogout = document.getElementById("header-logout");
@@ -120,41 +121,6 @@ badge.className = `badge ${cleared ? "badge-ok" : "badge-no"}`;
 badge.textContent = cleared ? "Mapa concluído" : "Não concluído";
 
 // ── Stats gerais ──────────────────────────────────────────────────────────
-// ── Tooltip de métrica (mesmos elementos visuais do modal do sistema) ──────
-const METRICA_DESC = {
-  precisao:  { titulo: "Precisão",  texto: "Mostra o quanto o aluno evitou bater em obstáculos durante o percurso. Quanto menos colisões, maior a precisão." },
-  fluidez:   { titulo: "Fluidez",   texto: "Mostra o quanto o caminho foi direto, sem voltas ou desvios desnecessários. Quanto mais perto do menor caminho possível, maior a fluidez." },
-  objetivos: { titulo: "Objetivos", texto: "Mostra quantas metas do percurso o aluno conseguiu concluir. Quanto mais metas alcançadas, maior o valor." },
-};
-function metricaKey(label) {
-  const l = (label ?? "").toString().toLowerCase();
-  if (l.startsWith("precis"))  return "precisao";
-  if (l.startsWith("fluid"))   return "fluidez";
-  if (l.startsWith("objetiv")) return "objetivos";
-  return null;
-}
-const metricaTip = document.createElement("div");
-metricaTip.style.cssText = "position:fixed;z-index:10000;max-width:260px;display:none;pointer-events:none;background:var(--theme-background);border:1px solid var(--theme-foreground-faint);border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.35);padding:.7rem .85rem;font-size:.8rem;line-height:1.45;color:var(--theme-foreground);";
-document.body.append(metricaTip);
-function attachMetricaTip(el, label) {
-  const key = metricaKey(label);
-  const d = key && METRICA_DESC[key];
-  if (!d) return;
-  el.style.cursor = "help";
-  el.addEventListener("mouseenter", () => {
-    metricaTip.innerHTML = `<div style="font-weight:700;margin-bottom:.25rem;color:#2E9B96;">${d.titulo}</div>${d.texto}`;
-    metricaTip.style.display = "block";
-  });
-  el.addEventListener("mousemove", (e) => {
-    const pad = 14, r = metricaTip.getBoundingClientRect();
-    let x = e.clientX + pad, y = e.clientY + pad;
-    if (x + r.width  > window.innerWidth)  x = e.clientX - r.width  - pad;
-    if (y + r.height > window.innerHeight) y = e.clientY - r.height - pad;
-    metricaTip.style.left = x + "px"; metricaTip.style.top = y + "px";
-  });
-  el.addEventListener("mouseleave", () => { metricaTip.style.display = "none"; });
-}
-
 function makeStatBox(val, label, color) {
   const box = document.createElement("div"); box.className = "stat-box";
   const v = document.createElement("div"); v.className = "stat-val"; v.textContent = val;
