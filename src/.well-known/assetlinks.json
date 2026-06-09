@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.ufc.ena",
+      "sha256_cert_fingerprints": [
+        "DD:A4:99:CA:C1:E3:45:1D:07:92:E3:47:A7:23:E3:53:0F:2E:88:3C:C6:55:E4:D5:EA:77:D3:4B:9C:9F:60:7A"
+      ]
+    }
+  }
+]
