@@ -122,9 +122,9 @@ badge.textContent = cleared ? "Mapa concluído" : "Não concluído";
 // ── Stats gerais ──────────────────────────────────────────────────────────
 // ── Tooltip de métrica (mesmos elementos visuais do modal do sistema) ──────
 const METRICA_DESC = {
-  precisao:  { titulo: "Precisão",  texto: "Mede o quanto o aluno evitou colisões. Cálculo: 100% menos a proporção de colisões no trajeto." },
-  fluidez:   { titulo: "Fluidez",   texto: "Mede o quanto o trajeto foi direto. Cálculo: distância ótima ÷ distância percorrida × 100%." },
-  objetivos: { titulo: "Objetivos", texto: "Mede as metas alcançadas. Cálculo: metas concluídas ÷ metas totais × 100%." },
+  precisao:  { titulo: "Precisão",  texto: "Mostra o quanto o aluno evitou bater em obstáculos durante o percurso. Quanto menos colisões, maior a precisão." },
+  fluidez:   { titulo: "Fluidez",   texto: "Mostra o quanto o caminho foi direto, sem voltas ou desvios desnecessários. Quanto mais perto do menor caminho possível, maior a fluidez." },
+  objetivos: { titulo: "Objetivos", texto: "Mostra quantas metas do percurso o aluno conseguiu concluir. Quanto mais metas alcançadas, maior o valor." },
 };
 function metricaKey(label) {
   const l = (label ?? "").toString().toLowerCase();
