@@ -192,6 +192,27 @@ if (m) {
 }
 painelRadar.append(painelRadarTitulo, painelRadarCorpo);
 
+// ── Legenda (minimap / preview 3D) ────────────────────────────────────────
+const LEG = {
+  trajetoria: ["background:linear-gradient(90deg,#f0f,#00f,#0ff,#0f0,#ff0,#f70);", "Trajetória do aluno (cor por segmento)"],
+  objetivos:  ["background:#12b33c;", "Objetivos / metas"],
+  inicioFim:  ["background:#fff;border:1px solid var(--theme-foreground-faint);", "Início / Fim"],
+};
+function makeLegenda(itens) {
+  const wrap = document.createElement("div");
+  wrap.style.cssText = "display:flex;flex-wrap:wrap;gap:.55rem 1.1rem;padding:.6rem 1rem;font-size:.72rem;color:var(--theme-foreground-muted);border-top:1px solid var(--theme-foreground-faintest);";
+  for (const [css, label] of itens) {
+    const it = document.createElement("span");
+    it.style.cssText = "display:inline-flex;align-items:center;gap:.4rem;";
+    const sw = document.createElement("span");
+    sw.style.cssText = "width:14px;height:14px;border-radius:3px;flex:none;" + css;
+    const lb = document.createElement("span"); lb.textContent = label;
+    it.append(sw, lb);
+    wrap.append(it);
+  }
+  return wrap;
+}
+
 // ── Minimap ───────────────────────────────────────────────────────────────
 const painelMini = document.createElement("div"); painelMini.className = "painel";
 const painelMiniTitulo = document.createElement("div"); painelMiniTitulo.className = "painel-titulo"; painelMiniTitulo.textContent = "Minimap da sessão";
@@ -211,6 +232,7 @@ if (sessao.tem_minimap && sessao.caminho_minimap) {
   miniWrap.innerHTML = `<div class="img-placeholder">Minimap não disponível</div>`;
 }
 painelMiniCorpo.append(miniWrap);
+painelMiniCorpo.append(makeLegenda([LEG.trajetoria, LEG.objetivos, LEG.inicioFim]));
 painelMini.append(painelMiniTitulo, painelMiniCorpo);
 
 // ── Render 3D ─────────────────────────────────────────────────────────────
@@ -232,6 +254,7 @@ if (sessao.render_3d) {
   renderWrap.innerHTML = `<div class="img-placeholder">Render 3D não disponível</div>`;
 }
 painelRenderCorpo.append(renderWrap);
+painelRenderCorpo.append(makeLegenda([LEG.objetivos]));
 painelRender.append(painelRenderTitulo, painelRenderCorpo);
 
 // ── Informações gerais ────────────────────────────────────────────────────
