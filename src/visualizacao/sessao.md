@@ -120,11 +120,47 @@ badge.className = `badge ${cleared ? "badge-ok" : "badge-no"}`;
 badge.textContent = cleared ? "Mapa concluído" : "Não concluído";
 
 // ── Stats gerais ──────────────────────────────────────────────────────────
+// ── Tooltip de métrica (mesmos elementos visuais do modal do sistema) ──────
+const METRICA_DESC = {
+  precisao:  { titulo: "Precisão",  texto: "Mede o quanto o aluno evitou colisões. Cálculo: 100% menos a proporção de colisões no trajeto." },
+  fluidez:   { titulo: "Fluidez",   texto: "Mede o quanto o trajeto foi direto. Cálculo: distância ótima ÷ distância percorrida × 100%." },
+  objetivos: { titulo: "Objetivos", texto: "Mede as metas alcançadas. Cálculo: metas concluídas ÷ metas totais × 100%." },
+};
+function metricaKey(label) {
+  const l = (label ?? "").toString().toLowerCase();
+  if (l.startsWith("precis"))  return "precisao";
+  if (l.startsWith("fluid"))   return "fluidez";
+  if (l.startsWith("objetiv")) return "objetivos";
+  return null;
+}
+const metricaTip = document.createElement("div");
+metricaTip.style.cssText = "position:fixed;z-index:10000;max-width:260px;display:none;pointer-events:none;background:var(--theme-background);border:1px solid var(--theme-foreground-faint);border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.35);padding:.7rem .85rem;font-size:.8rem;line-height:1.45;color:var(--theme-foreground);";
+document.body.append(metricaTip);
+function attachMetricaTip(el, label) {
+  const key = metricaKey(label);
+  const d = key && METRICA_DESC[key];
+  if (!d) return;
+  el.style.cursor = "help";
+  el.addEventListener("mouseenter", () => {
+    metricaTip.innerHTML = `<div style="font-weight:700;margin-bottom:.25rem;color:#2E9B96;">${d.titulo}</div>${d.texto}`;
+    metricaTip.style.display = "block";
+  });
+  el.addEventListener("mousemove", (e) => {
+    const pad = 14, r = metricaTip.getBoundingClientRect();
+    let x = e.clientX + pad, y = e.clientY + pad;
+    if (x + r.width  > window.innerWidth)  x = e.clientX - r.width  - pad;
+    if (y + r.height > window.innerHeight) y = e.clientY - r.height - pad;
+    metricaTip.style.left = x + "px"; metricaTip.style.top = y + "px";
+  });
+  el.addEventListener("mouseleave", () => { metricaTip.style.display = "none"; });
+}
+
 function makeStatBox(val, label, color) {
   const box = document.createElement("div"); box.className = "stat-box";
   const v = document.createElement("div"); v.className = "stat-val"; v.textContent = val;
   if (color) v.style.color = color;
   const l = document.createElement("div"); l.className = "stat-lbl"; l.textContent = label;
+  attachMetricaTip(l, label);
   box.append(v, l); return box;
 }
 const statRow = document.createElement("div"); statRow.className = "stat-row";
@@ -171,7 +207,7 @@ function makeRadar(m) {
     const [dx,dy] = pt(R * e.valor / 100, e.angulo);
     const anchor  = lx < cx - 5 ? "end" : lx > cx + 5 ? "start" : "middle";
     return `<circle cx="${dx}" cy="${dy}" r="4" fill="${cor.stroke}"/>
-      <text x="${lx}" y="${ly-7}" font-size="11" font-weight="600" style="fill:var(--theme-foreground)" text-anchor="${anchor}" font-family="system-ui,sans-serif">${e.label}</text>
+      <text class="metrica" x="${lx}" y="${ly-7}" font-size="11" font-weight="600" style="fill:var(--theme-foreground);cursor:help" text-anchor="${anchor}" font-family="system-ui,sans-serif">${e.label}</text>
       <text x="${lx}" y="${ly+9}" font-size="13" font-weight="700" fill="${cor.stroke}" text-anchor="${anchor}" font-family="system-ui,sans-serif">${Math.round(e.valor)}%</text>`;
   }).join("");
 
@@ -187,6 +223,7 @@ const painelRadarTitulo = document.createElement("div"); painelRadarTitulo.class
 const painelRadarCorpo = document.createElement("div"); painelRadarCorpo.className = "painel-corpo"; painelRadarCorpo.style.cssText = "display:flex;justify-content:center;padding:1.5rem 1rem";
 if (m) {
   painelRadarCorpo.append(makeRadar(m));
+  painelRadarCorpo.querySelectorAll("text.metrica").forEach(t => attachMetricaTip(t, t.textContent));
 } else {
   painelRadarCorpo.innerHTML = `<p style="color:var(--theme-foreground-muted);font-style:italic;font-size:.85rem;margin:0">Métricas indisponíveis para esta sessão</p>`;
 }
@@ -265,6 +302,7 @@ const painelInfoCorpo = document.createElement("div"); painelInfoCorpo.className
 function infoRow(label, value, color) {
   const tr  = document.createElement("tr");
   const tdL = document.createElement("td"); tdL.className = "lbl"; tdL.textContent = label;
+  attachMetricaTip(tdL, label);
   const tdV = document.createElement("td"); tdV.className = "val";
   if (value instanceof Element) tdV.append(value);
   else tdV.textContent = value ?? "—";
