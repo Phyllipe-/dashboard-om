@@ -109,24 +109,10 @@ export default {
       <div id="modal-pers-body" style="overflow-y:auto;padding:.6rem .75rem;flex:1;"></div>
 
       <!-- Rodapé -->
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:.7rem 1rem;border-top:1px solid var(--theme-foreground-faintest);flex-shrink:0;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:.7rem 1rem;border-top:1px solid var(--theme-foreground-faintest);flex-shrink:0;gap:.6rem;">
         <button onclick="restaurarPers()" class="btn-pers-sec">Restaurar padrões</button>
-        <div style="display:flex;gap:.5rem;">
-          <button onclick="abrirPreview()" class="btn-pers-sec">👁 Pré-visualizar</button>
-          <button id="btn-salvar-pers" onclick="salvarPers()" class="btn-pers-pri">💾 Salvar</button>
-        </div>
+        <span style="font-size:.72rem;color:var(--theme-foreground-muted);text-align:right;">As alterações são aplicadas e salvas na hora.</span>
       </div>
-    </div>
-  </div>
-
-  <!-- Overlay de pré-visualização -->
-  <div id="preview-pers" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:999999;overflow-y:auto;padding:1rem;">
-    <div style="background:var(--theme-background);border-radius:12px;border:1px solid var(--theme-foreground-faintest);box-shadow:0 8px 32px rgba(0,0,0,.22);max-width:1100px;margin:0 auto;display:flex;flex-direction:column;">
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:.8rem 1.1rem;border-bottom:1px solid var(--theme-foreground-faintest);flex-shrink:0;">
-        <span style="font-weight:700;font-size:.92rem;">👁 Pré-visualização do Layout</span>
-        <button onclick="fechPreview()" style="background:none;border:none;cursor:pointer;font-size:1rem;color:var(--theme-foreground-muted);padding:.2rem .45rem;border-radius:4px;line-height:1;">✕</button>
-      </div>
-      <div id="preview-pers-body" style="padding:1rem;"></div>
     </div>
   </div>
 
@@ -309,6 +295,7 @@ export default {
             _orderState[secao].splice(idx, 1);
             _orderState[secao].splice(idx - 1, 0, chave);
             _renderPers();
+            _persistPrefs();
           });
           const btnDn = document.createElement('button');
           btnDn.textContent = '▼'; btnDn.title = 'Mover para baixo';
@@ -318,6 +305,7 @@ export default {
             _orderState[secao].splice(idx, 1);
             _orderState[secao].splice(idx + 1, 0, chave);
             _renderPers();
+            _persistPrefs();
           });
           orderWrap.append(btnUp, btnDn);
 
@@ -342,6 +330,8 @@ export default {
           chk.addEventListener('change', () => {
             _persState[chave] = chk.checked;
             status.textContent = chk.checked ? 'ON' : 'OFF';
+            _aplicarVivo(chave, chk.checked);
+            _persistPrefs();
           });
           row.addEventListener('click', () => {
             chk.checked = !chk.checked;
@@ -362,275 +352,39 @@ export default {
         if (!q.personalizavel) continue;
         _persState[q.chave] = q.ativo_padrao ?? true;
         (_orderState[q.secao] = _orderState[q.secao] || []).push(q.chave);
+        _aplicarVivo(q.chave, _persState[q.chave]);
       }
       _renderPers();
+      _persistPrefs();
     }
 
-    // ── Preview ───────────────────────────────────────────────────────────────
-    function abrirPreview() {
-      document.getElementById('preview-pers').style.display = 'block';
-      _buildPreview();
-    }
-    function fechPreview() {
-      document.getElementById('preview-pers').style.display = 'none';
-    }
-    document.getElementById('preview-pers').addEventListener('click', e => {
-      if (e.target === document.getElementById('preview-pers')) fechPreview();
-    });
-
-    function _buildPreview() {
-      const body = document.getElementById('preview-pers-body');
-      body.innerHTML = '';
-      if (!_persData.length) {
-        body.innerHTML = '<p class="prev-empty">Abra o personalizador primeiro para gerar o preview.</p>';
-        return;
-      }
-      const qMap = Object.fromEntries(_persData.map(q => [q.chave, q]));
-
-      function visiveisDe(secao) {
-        const fixos = _persData.filter(q => q.secao === secao && !q.personalizavel && q.ativo_padrao).map(q => q.chave);
-        const pers  = (_orderState[secao] || []).filter(k => _persState[k] !== false && qMap[k]);
-        return [...fixos, ...pers];
-      }
-
-      // ── SVG mock charts ──────────────────────────────────────────────────
-      const CHART_TYPE = {
-        'mapa-giros':             'mapa',
-        'eventos-area':           'heatmap',
-        'colisoes-percurso':      'mapa',
-        'mapa-permanencia':       'heatmap',
-        'analise-comportamental': 'radar',
-        'lat-por-sessoes':        'bar',
-        'col-por-sessao':         'bar',
-        'giros-detalhado':        'bar',
-        'giros-por-sessao':       'bargroup',
-        'dist-menor-caminho':     'barref',
-        'col-giros-sessao':       'line',
-        'evolucao-sessao':        'multiline',
-      };
-
-      function rnd(min, max) { return min + Math.random() * (max - min); }
-      function _vb(W, h) { return '<svg viewBox="0 0 '+W+' '+h+'" width="100%" style="display:block" xmlns="http://www.w3.org/2000/svg">'; }
-
-      function svgMapa(h) {
-        var W = 300, cols = 8, rows = 6, cw = W/cols, ch = h/rows;
-        var pal = ['#e2e8f0','#e2e8f0','#e2e8f0','#bfdbfe','#60a5fa','#3b82f6','#f59e0b','#10b981'];
-        var c = '';
-        for (var r = 0; r < rows; r++)
-          for (var col = 0; col < cols; col++) {
-            var fill = pal[Math.floor(Math.random() * pal.length)];
-            c += '<rect x="'+(col*cw+1)+'" y="'+(r*ch+1)+'" width="'+(cw-2)+'" height="'+(ch-2)+'" rx="2" fill="'+fill+'"/>';
-          }
-        return _vb(W,h)+c+'</svg>';
-      }
-
-      function svgHeatmap(h) {
-        var W = 300, cols = 10, rows = 7, cw = W/cols, ch = h/rows;
-        var pal = ['#eff6ff','#dbeafe','#93c5fd','#3b82f6','#1d4ed8','#f59e0b','#ef4444'];
-        var c = '';
-        for (var r = 0; r < rows; r++)
-          for (var col = 0; col < cols; col++) {
-            var v = Math.random();
-            c += '<rect x="'+(col*cw+.5)+'" y="'+(r*ch+.5)+'" width="'+(cw-1)+'" height="'+(ch-1)+'" fill="'+pal[Math.floor(v*(pal.length-1))]+'" opacity="'+(0.45+v*0.55)+'"/>';
-          }
-        return _vb(W,h)+c+'</svg>';
-      }
-
-      function svgBar(h) {
-        var W = 300, n = 6, pad = 14, gap = (W-pad*2)/n, bw = gap*0.62;
-        var bars = '<line x1="'+pad+'" y1="'+(h-10)+'" x2="'+(W-pad)+'" y2="'+(h-10)+'" stroke="#e2e8f0" stroke-width="1"/>';
-        for (var i = 0; i < n; i++) {
-          var bh = rnd(0.28, 0.88) * (h-18);
-          bars += '<rect x="'+(pad+i*gap+gap*0.19)+'" y="'+(h-10-bh)+'" width="'+bw+'" height="'+bh+'" rx="2" fill="#3b82f6" opacity="'+rnd(0.55,0.9)+'"/>';
-        }
-        return _vb(W,h)+bars+'</svg>';
-      }
-
-      function svgBarGroup(h) {
-        var W = 300, n = 4, pad = 14, gap = (W-pad*2)/n, bw = gap*0.36;
-        var colors = ['#3b82f6','#10b981'];
-        var bars = '<line x1="'+pad+'" y1="'+(h-10)+'" x2="'+(W-pad)+'" y2="'+(h-10)+'" stroke="#e2e8f0" stroke-width="1"/>';
-        for (var i = 0; i < n; i++)
-          for (var s = 0; s < 2; s++) {
-            var bh = rnd(0.25, 0.8) * (h-18);
-            bars += '<rect x="'+(pad+i*gap+s*bw+gap*0.08)+'" y="'+(h-10-bh)+'" width="'+bw+'" height="'+bh+'" rx="2" fill="'+colors[s]+'" opacity="0.82"/>';
-          }
-        return _vb(W,h)+bars+'</svg>';
-      }
-
-      function svgBarRef(h) {
-        var W = 300, n = 5, pad = 14, gap = (W-pad*2)/n, bw = gap*0.58;
-        var refY = Math.round((h-10) * 0.38);
-        var bars = '<line x1="'+pad+'" y1="'+(h-10)+'" x2="'+(W-pad)+'" y2="'+(h-10)+'" stroke="#e2e8f0" stroke-width="1"/>';
-        for (var i = 0; i < n; i++) {
-          var bh = rnd(0.22, 0.75) * (h-18);
-          bars += '<rect x="'+(pad+i*gap+gap*0.21)+'" y="'+(h-10-bh)+'" width="'+bw+'" height="'+bh+'" rx="2" fill="#3b82f6" opacity="'+rnd(0.55,0.88)+'"/>';
-        }
-        bars += '<line x1="'+pad+'" y1="'+refY+'" x2="'+(W-pad)+'" y2="'+refY+'" stroke="#10b981" stroke-width="1.5" stroke-dasharray="4,3"/>';
-        bars += '<text x="'+(W-pad-2)+'" y="'+(refY-4)+'" text-anchor="end" font-size="8" fill="#10b981" font-family="sans-serif">Menor Caminho</text>';
-        return _vb(W,h)+bars+'</svg>';
-      }
-
-      function svgLine(h) {
-        var W = 300, n = 9, pad = 14;
-        var pts = [], i;
-        for (i = 0; i < n; i++) pts.push([pad + i*(W-pad*2)/(n-1), pad + rnd(0.1,0.85)*(h-pad*2)]);
-        var d = pts.map(function(p,i){ return (i?'L':'M')+p[0].toFixed(1)+','+p[1].toFixed(1); }).join(' ');
-        var dots = pts.map(function(p){ return '<circle cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="2.5" fill="#3b82f6"/>'; }).join('');
-        return _vb(W,h)+'<path d="'+d+'" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linejoin="round"/>'+dots+'</svg>';
-      }
-
-      function svgMultiline(h) {
-        var W = 300, n = 9, pad = 14;
-        var colors = ['#3b82f6','#10b981','#f59e0b'];
-        var paths = '', ci, i;
-        for (ci = 0; ci < colors.length; ci++) {
-          var pts = [];
-          for (i = 0; i < n; i++) pts.push([pad + i*(W-pad*2)/(n-1), pad + rnd(0.1,0.85)*(h-pad*2)]);
-          var d = pts.map(function(p,i){ return (i?'L':'M')+p[0].toFixed(1)+','+p[1].toFixed(1); }).join(' ');
-          paths += '<path d="'+d+'" fill="none" stroke="'+colors[ci]+'" stroke-width="1.8" stroke-linejoin="round" opacity="0.85"/>';
-        }
-        return _vb(W,h)+paths+'</svg>';
-      }
-
-      function svgRadar(h) {
-        var W = 300, cx = W/2, cy = h/2, r = Math.min(W,h)/2 - 12, n = 6;
-        var axes = [], i;
-        for (i = 0; i < n; i++) {
-          var a = (i/n)*Math.PI*2 - Math.PI/2;
-          axes.push([cx + r*Math.cos(a), cy + r*Math.sin(a)]);
-        }
-        var web = axes.map(function(p){ return '<line x1="'+cx+'" y1="'+cy+'" x2="'+p[0].toFixed(1)+'" y2="'+p[1].toFixed(1)+'" stroke="#e2e8f0" stroke-width="1"/>'; }).join('');
-        var rings = [0.33,0.66,1].map(function(f){
-          var pts = axes.map(function(p){ return [(cx+(p[0]-cx)*f).toFixed(1),(cy+(p[1]-cy)*f).toFixed(1)]; });
-          return '<polygon points="'+pts.map(function(p){return p.join(',');}).join(' ')+'" fill="none" stroke="#e2e8f0" stroke-width="1"/>';
-        }).join('');
-        var vals = axes.map(function(p){ var v = rnd(0.3,0.92); return [(cx+(p[0]-cx)*v).toFixed(1),(cy+(p[1]-cy)*v).toFixed(1)]; });
-        var poly = '<polygon points="'+vals.map(function(p){return p.join(',');}).join(' ')+'" fill="#3b82f6" fill-opacity=".22" stroke="#3b82f6" stroke-width="1.5"/>';
-        return _vb(W,h)+web+rings+poly+'</svg>';
-      }
-
-      function mkSvg(chave, h) {
-        switch(CHART_TYPE[chave] || 'bar') {
-          case 'mapa':      return svgMapa(h);
-          case 'heatmap':   return svgHeatmap(h);
-          case 'bar':       return svgBar(h);
-          case 'bargroup':  return svgBarGroup(h);
-          case 'barref':    return svgBarRef(h);
-          case 'line':      return svgLine(h);
-          case 'multiline': return svgMultiline(h);
-          case 'radar':     return svgRadar(h);
-          default:          return svgBar(h);
-        }
-      }
-
-      function mkCard(q) {
-        const h = q.tamanho === 'grande' ? 130 : 80;
-        const card = document.createElement('div');
-        card.className = 'prev-card';
-        const t = document.createElement('div');
-        t.className = 'prev-card-title'; t.textContent = q.nome; t.title = q.nome;
-        const b = document.createElement('div');
-        b.className = 'prev-card-body';
-        b.innerHTML = mkSvg(q.chave, h);
-        card.append(t, b);
-        return card;
-      }
-
-      // ── Layout ───────────────────────────────────────────────────────────
-      const wrapper = document.createElement('div');
-      wrapper.className = 'prev-wrapper';
-
-      // Sidebar esquerda (menu lateral)
-      const sidebar = document.createElement('div');
-      sidebar.className = 'prev-sidebar';
-      const sideLbl = document.createElement('div');
-      sideLbl.className = 'prev-sidebar-title';
-      sideLbl.textContent = 'Menu Lateral';
-      sidebar.append(sideLbl);
-
-      const esquerdaVisiveis = new Set(visiveisDe('esquerda'));
-      for (const q of _persData.filter(q => q.secao === 'esquerda')) {
-        const on = !q.personalizavel ? q.ativo_padrao : esquerdaVisiveis.has(q.chave);
-        const item = document.createElement('div');
-        item.className = 'prev-sidebar-item' + (on ? ' active' : '');
-        const dot = document.createElement('span');
-        dot.className = 'prev-dot' + (on ? ' active' : '');
-        const txt = document.createElement('span');
-        txt.textContent = q.nome;
-        if (!on) txt.style.opacity = '0.4';
-        item.append(dot, txt);
-        sidebar.append(item);
-      }
-      wrapper.append(sidebar);
-
-      // Main: centro + direita + multi
-      const main = document.createElement('div');
-      main.className = 'prev-main';
-
-      const colsDiv = document.createElement('div');
-      colsDiv.className = 'prev-cols';
-
-      const colC = document.createElement('div'); colC.className = 'prev-col';
-      for (const k of visiveisDe('centro')) colC.append(mkCard(qMap[k]));
-      if (!colC.children.length) { const e = document.createElement('p'); e.className = 'prev-empty'; e.textContent = 'Nenhum quadro visível'; colC.append(e); }
-
-      const colD = document.createElement('div'); colD.className = 'prev-col';
-      for (const k of visiveisDe('direita')) colD.append(mkCard(qMap[k]));
-      if (!colD.children.length) { const e = document.createElement('p'); e.className = 'prev-empty'; e.textContent = 'Nenhum quadro visível'; colD.append(e); }
-
-      colsDiv.append(colC, colD);
-      main.append(colsDiv);
-
-      const multiChaves = visiveisDe('multi');
-      if (multiChaves.length) {
-        const secLbl = document.createElement('div');
-        secLbl.className = 'prev-sec'; secLbl.textContent = 'Sessões Múltiplas';
-        main.append(secLbl);
-
-        const multiCols = document.createElement('div');
-        multiCols.className = 'prev-cols';
-        const mC = document.createElement('div'); mC.className = 'prev-col';
-        const mD = document.createElement('div'); mD.className = 'prev-col';
-        for (const k of multiChaves) {
-          const q = qMap[k];
-          (q.tamanho === 'grande' ? mC : mD).append(mkCard(q));
-        }
-        if (!mC.children.length) { const e = document.createElement('p'); e.className = 'prev-empty'; e.textContent = 'Nenhum'; mC.append(e); }
-        if (!mD.children.length) { const e = document.createElement('p'); e.className = 'prev-empty'; e.textContent = 'Nenhum'; mD.append(e); }
-        multiCols.append(mC, mD);
-        main.append(multiCols);
-      }
-
-      wrapper.append(main);
-      body.append(wrapper);
+    // ── Aplicacao ao vivo + persistencia automatica ───────────────────────────
+    function _aplicarVivo(chave, visivel) {
+      document.querySelectorAll('[data-quadro-chave="' + chave + '"]').forEach(el => {
+        el.style.display = visivel ? '' : 'none';
+      });
     }
 
-    async function salvarPers() {
-      const token = sessionStorage.getItem('om_token');
-      const btn   = document.getElementById('btn-salvar-pers');
-      btn.disabled = true; btn.textContent = 'Salvando…';
-
-      const payload = [];
-      for (const [secao, chaves] of Object.entries(_orderState)) {
-        chaves.forEach((chave, idx) => {
-          payload.push({ chave, visivel: _persState[chave] ?? true, ordem: idx });
-        });
-      }
-
-      try {
-        const resp = await fetch(_API + '/quadros/preferencias/', {
-          method: 'PATCH',
-          headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        if (!resp.ok) throw new Error('Erro ' + resp.status);
-        fechPers();
-      } catch(e) {
-        alert('Erro ao salvar: ' + e.message);
-      } finally {
-        btn.disabled = false; btn.textContent = '💾 Salvar';
-      }
+    let _persistTimer = null;
+    function _persistPrefs() {
+      clearTimeout(_persistTimer);
+      _persistTimer = setTimeout(async () => {
+        const token = sessionStorage.getItem('om_token');
+        const payload = [];
+        for (const [secao, chaves] of Object.entries(_orderState)) {
+          chaves.forEach((chave, idx) => {
+            payload.push({ chave, visivel: _persState[chave] ?? true, ordem: idx });
+          });
+        }
+        try {
+          await fetch(_API + '/quadros/preferencias/', {
+            method: 'PATCH',
+            headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+        } catch(e) { console.error('Erro ao salvar preferencias:', e); }
+      }, 350);
     }
+
   </script>`,
 };
