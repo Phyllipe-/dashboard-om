@@ -194,7 +194,7 @@ painelRadar.append(painelRadarTitulo, painelRadarCorpo);
 
 // ── Legenda (minimap / preview 3D) ────────────────────────────────────────
 const LEG = {
-  trajetoria: ["background:linear-gradient(90deg,#f0f,#00f,#0ff,#0f0,#ff0,#f70);", "Trajetória do aluno (cor por segmento)"],
+  trajetoria: ["width:32px;background:linear-gradient(90deg,#f0f 0 16.6%,#00f 16.6% 33.3%,#0ff 33.3% 50%,#0f0 50% 66.6%,#ff0 66.6% 83.3%,#f70 83.3%);", "Trajetória do aluno — cada trecho em uma cor"],
   objetivos:  ["background:#12b33c;", "Objetivos / metas"],
   inicioFim:  ["background:#fff;border:1px solid var(--theme-foreground-faint);", "Início / Fim"],
 };
