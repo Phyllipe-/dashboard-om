@@ -10,7 +10,7 @@ toc: false
   .col-imagens { display:flex; flex-direction:column; gap:1rem; }
 
   .painel { background:var(--theme-background); border:1px solid var(--theme-foreground-faintest); border-radius:12px; overflow:hidden; }
-  .painel-titulo { font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--theme-foreground-muted); padding:.65rem 1rem; border-bottom:1px solid var(--theme-foreground-faintest); }
+  .painel-titulo { font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; background:#2E9B96; color:#201E1C; padding:.65rem 1rem; border-bottom:1px solid var(--theme-foreground-faintest); }
   .painel-corpo { padding:1rem; }
 
   .stat-row { display:grid; grid-template-columns:repeat(auto-fill, minmax(130px,1fr)); gap:.75rem; margin-bottom:1rem; }
