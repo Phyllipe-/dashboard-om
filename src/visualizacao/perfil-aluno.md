@@ -326,6 +326,31 @@ const headerLogout = document.getElementById("header-logout");
 if (headerUser)   headerUser.textContent = currentUser.nome;
 if (headerLogout) headerLogout.addEventListener("click", logout);
 
+// ── Parâmetros configuráveis da Análise Comportamental (admin → /admin/quadros) ─
+const PARAMS_COMP_DEFAULT = {
+  exploracao:   { meta_cobertura: 100 },   // % do mapa para nota máxima
+  precisao:     { peso_colisao: 1 },        // multiplicador da penalidade por colisão
+  lateralidade: { peso_desequilibrio: 1 },  // multiplicador da penalidade por desequilíbrio
+  concentracao: { top_pct: 20 },            // % das áreas mais visitadas
+  orientacao:   { giros_max: 30 },          // % de giros/ações que zera a nota
+  pesos:        { exploracao: 25, precisao: 25, lateralidade: 15, concentracao: 20, orientacao: 15 },
+  cor:          { verde: 70, amarelo: 40 },
+};
+function mergeParamsComp(p) {
+  const d = PARAMS_COMP_DEFAULT;
+  if (!p || typeof p !== "object") return d;
+  return {
+    exploracao:   { meta_cobertura: Number(p?.exploracao?.meta_cobertura ?? d.exploracao.meta_cobertura) },
+    precisao:     { peso_colisao: Number(p?.precisao?.peso_colisao ?? d.precisao.peso_colisao) },
+    lateralidade: { peso_desequilibrio: Number(p?.lateralidade?.peso_desequilibrio ?? d.lateralidade.peso_desequilibrio) },
+    concentracao: { top_pct: Number(p?.concentracao?.top_pct ?? d.concentracao.top_pct) },
+    orientacao:   { giros_max: Number(p?.orientacao?.giros_max ?? d.orientacao.giros_max) },
+    pesos:        { ...d.pesos, ...(p?.pesos ?? {}) },
+    cor:          { verde: Number(p?.cor?.verde ?? d.cor.verde), amarelo: Number(p?.cor?.amarelo ?? d.cor.amarelo) },
+  };
+}
+let paramsComp = PARAMS_COMP_DEFAULT;
+
 // ── Preferências de quadros (visibilidade por padrão ou customizada) ──────────
 let _prefMap = {};       // chave → visivel
 let _sessaoUnicaMap = {}; // chave → exclusivo_sessao_unica
@@ -336,6 +361,7 @@ try {
     _prefMap[p.chave] = p.visivel;
     if (p.exclusivo_sessao_unica) _sessaoUnicaMap[p.chave] = true;
     if (p.ordem != null) _ordemMap[p.chave] = p.ordem;
+    if (p.chave === "analise-comportamental") paramsComp = mergeParamsComp(p.parametros);
   }
 } catch(_) {}
 
@@ -3743,36 +3769,43 @@ const phRadar          = ph("ph-radar",         "🕸️",  "Radar de Métricas"
 
 // ── Análise Comportamental ────────────────────────────────────────────────
 function calcularComportamental(dadosLog, rows, cols, giros) {
-  // 1. Exploração — tiles únicos visitados / total de tiles do mapa
+  const P = paramsComp;
+  const clamp = (v) => Math.max(0, Math.min(100, v));
+
+  // 1. Exploração — tiles únicos visitados / (total de tiles × meta de cobertura)
   const contagem    = contarMovimentos(dadosLog);
   const tilesUnicos = contagem.size;
   const totalTiles  = (rows * cols) || 1;
-  const exploracaoScore = Math.min(tilesUnicos / totalTiles, 1) * 100;
+  const metaCob     = (Number(P.exploracao.meta_cobertura) || 100) / 100;
+  const exploracaoScore = clamp(Math.min(tilesUnicos / (totalTiles * (metaCob || 1)), 1) * 100);
 
-  // 2. Precisão — colisões evitadas (mesma fórmula do radar: colisões sobre ações+colisões)
+  // 2. Precisão — colisões evitadas (colisões sobre ações+colisões, × peso de colisão)
   let totalAcoes = 0, totalColisoes = 0;
   for (const obj of dadosLog?.objectives ?? []) {
     totalAcoes    += (obj.actions    ?? []).length;
     totalColisoes += (obj.collisions ?? []).length;
   }
   const totalEventos  = totalAcoes + totalColisoes;
-  const precisaoScore = totalEventos > 0 ? (1 - totalColisoes / totalEventos) * 100 : 100;
+  const precisaoScore = totalEventos > 0
+    ? clamp((1 - P.precisao.peso_colisao * (totalColisoes / totalEventos)) * 100)
+    : 100;
 
-  // 3. Lateralidade — equilíbrio entre direita e esquerda
+  // 3. Lateralidade — equilíbrio entre direita e esquerda (× peso de desequilíbrio)
   const lat            = extrairLateralidade(dadosLog);
-  const equilibrioScore = (1 - Math.abs(lat.pctDireita - lat.pctEsquerda)) * 100;
+  const equilibrioScore = clamp((1 - P.lateralidade.peso_desequilibrio * Math.abs(lat.pctDireita - lat.pctEsquerda)) * 100);
 
-  // 4. Concentração — percentual do movimento nos 20% de tiles mais visitados
+  // 4. Concentração — percentual do movimento nos top_pct% de tiles mais visitados
   const counts       = [...contagem.values()].sort((a, b) => b - a);
   const totalVisitas = counts.reduce((s, v) => s + v, 0) || 1;
-  const nTop         = Math.max(1, Math.ceil(counts.length * 0.2));
+  const topFrac      = (Number(P.concentracao.top_pct) || 20) / 100;
+  const nTop         = Math.max(1, Math.ceil(counts.length * topFrac));
   const visitasTop   = counts.slice(0, nTop).reduce((s, v) => s + v, 0);
-  const concentracaoScore = (visitasTop / totalVisitas) * 100;
+  const concentracaoScore = clamp((visitasTop / totalVisitas) * 100);
 
-  // 5. Orientação — poucos giros em relação ao total de ações
+  // 5. Orientação — poucos giros em relação ao total de ações (giros_max% zera a nota)
   const girosRate      = totalAcoes > 0 ? giros.length / totalAcoes : 0;
-  // 0% giros = 100 pts; >=30% das ações são giros = 0 pts
-  const orientacaoScore = Math.max(0, Math.min(100, (1 - girosRate / 0.3) * 100));
+  const girosMax       = (Number(P.orientacao.giros_max) || 30) / 100;
+  const orientacaoScore = clamp((1 - girosRate / (girosMax || 1)) * 100);
 
   const dimensoes = [
     { nome: "Exploração",     score: exploracaoScore,    desc: "Área do mapa percorrida" },
@@ -3782,15 +3815,16 @@ function calcularComportamental(dadosLog, rows, cols, giros) {
     { nome: "Orientação",     score: orientacaoScore,    desc: "Navegação sem giros excessivos" },
   ];
 
-  // Pontuação composta ponderada
-  const pesos    = [0.25, 0.25, 0.15, 0.20, 0.15];
-  const composta = dimensoes.reduce((s, d, i) => s + d.score * pesos[i], 0);
+  // Pontuação composta ponderada (pesos configuráveis, normalizados pela soma)
+  const pesos     = [P.pesos.exploracao, P.pesos.precisao, P.pesos.lateralidade, P.pesos.concentracao, P.pesos.orientacao].map(Number);
+  const somaPesos = pesos.reduce((s, v) => s + v, 0) || 1;
+  const composta  = dimensoes.reduce((s, d, i) => s + d.score * pesos[i], 0) / somaPesos;
 
   return { dimensoes, composta };
 }
 
 function corScore(v) {
-  return v >= 70 ? "#5ba85b" : v >= 40 ? "#e8a838" : "#e05454";
+  return v >= paramsComp.cor.verde ? "#5ba85b" : v >= paramsComp.cor.amarelo ? "#e8a838" : "#e05454";
 }
 
 function renderizarComportamental() {

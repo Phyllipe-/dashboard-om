@@ -270,6 +270,157 @@ for (const { chave, label } of SECOES) {
   wrap.append(bloco);
 }
 
+// ── Editor de parâmetros da Análise Comportamental ─────────────────────────────
+const PARAMS_COMP_DEFAULT = {
+  exploracao:   { meta_cobertura: 100 },
+  precisao:     { peso_colisao: 1 },
+  lateralidade: { peso_desequilibrio: 1 },
+  concentracao: { top_pct: 20 },
+  orientacao:   { giros_max: 30 },
+  pesos:        { exploracao: 25, precisao: 25, lateralidade: 15, concentracao: 20, orientacao: 15 },
+  cor:          { verde: 70, amarelo: 40 },
+};
+
+function campoNum(refs, refKey, labelTxt, value, step, suf) {
+  const w = document.createElement("label");
+  w.style.cssText = "display:flex;flex-direction:column;gap:.25rem;font-size:.74rem;color:var(--theme-foreground-muted);";
+  const t = document.createElement("span"); t.textContent = labelTxt;
+  const row = document.createElement("span"); row.style.cssText = "display:flex;align-items:center;gap:.35rem;";
+  const i = document.createElement("input");
+  i.type = "number"; i.step = String(step); i.value = String(value); i.min = "0";
+  i.style.cssText = "width:78px;border:1px solid var(--theme-foreground-faintest);border-radius:6px;padding:.3rem .5rem;background:var(--theme-background);color:var(--theme-foreground);font-size:.85rem;";
+  row.append(i);
+  if (suf) { const s = document.createElement("span"); s.textContent = suf; row.append(s); }
+  w.append(t, row);
+  refs[refKey] = i;
+  return w;
+}
+
+function grupoTitulo(txt) {
+  const h = document.createElement("div");
+  h.textContent = txt;
+  h.style.cssText = "font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--theme-foreground-muted);margin-bottom:.1rem;";
+  return h;
+}
+function gridCampos() {
+  const g = document.createElement("div");
+  g.style.cssText = "display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:.7rem;";
+  return g;
+}
+
+function buildEditorParametros(q) {
+  const refs = {};
+  const cur  = q.parametros || {};
+  const val  = (grp, key) => Number(cur?.[grp]?.[key] ?? PARAMS_COMP_DEFAULT[grp][key]);
+
+  const card = document.createElement("div");
+  card.className = "quadros-wrap";
+  const head = document.createElement("div");
+  head.className = "secao-header";
+  head.textContent = `Parâmetros — ${q.nome}`;
+  card.append(head);
+
+  const body = document.createElement("div");
+  body.style.cssText = "padding:1rem;display:flex;flex-direction:column;gap:1.2rem;";
+
+  // Dimensões
+  const gDim = gridCampos();
+  gDim.append(
+    campoNum(refs, "exploracao.meta_cobertura",     "Exploração — meta de cobertura",  val("exploracao", "meta_cobertura"),     1,   "%"),
+    campoNum(refs, "precisao.peso_colisao",          "Precisão — peso da colisão",      val("precisao", "peso_colisao"),         0.1, "×"),
+    campoNum(refs, "lateralidade.peso_desequilibrio","Lateralidade — peso desequilíbrio", val("lateralidade", "peso_desequilibrio"), 0.1, "×"),
+    campoNum(refs, "concentracao.top_pct",           "Concentração — top de áreas",     val("concentracao", "top_pct"),          1,   "%"),
+    campoNum(refs, "orientacao.giros_max",           "Orientação — giros que zeram",    val("orientacao", "giros_max"),          1,   "%"),
+  );
+
+  // Pesos da Pontuação Composta
+  const gPeso = gridCampos();
+  for (const k of ["exploracao", "precisao", "lateralidade", "concentracao", "orientacao"]) {
+    const lbl = k.charAt(0).toUpperCase() + k.slice(1);
+    gPeso.append(campoNum(refs, `pesos.${k}`, lbl, val("pesos", k), 1, "%"));
+  }
+
+  // Faixas de cor
+  const gCor = gridCampos();
+  gCor.append(
+    campoNum(refs, "cor.verde",   "Verde (bom) ≥",     val("cor", "verde"),   1, "pts"),
+    campoNum(refs, "cor.amarelo", "Amarelo (médio) ≥", val("cor", "amarelo"), 1, "pts"),
+  );
+
+  body.append(
+    grupoTitulo("Dimensões"), gDim,
+    grupoTitulo("Pesos da Pontuação Composta (normalizados pela soma)"), gPeso,
+    grupoTitulo("Faixas de cor da nota"), gCor,
+  );
+
+  // Ações
+  const acoes = document.createElement("div");
+  acoes.style.cssText = "display:flex;gap:.6rem;align-items:center;";
+  const btnSalvar = document.createElement("button");
+  btnSalvar.className = "btn-save visible"; btnSalvar.textContent = "Salvar parâmetros";
+  const btnReset = document.createElement("button");
+  btnReset.textContent = "Restaurar padrão";
+  btnReset.style.cssText = "padding:.3rem .7rem;border-radius:6px;border:1px solid var(--theme-foreground-faintest);background:transparent;color:var(--theme-foreground-muted);font-size:.78rem;font-weight:600;cursor:pointer;";
+
+  function coletar() {
+    const n = (k) => Number(refs[k].value);
+    return {
+      exploracao:   { meta_cobertura: n("exploracao.meta_cobertura") },
+      precisao:     { peso_colisao: n("precisao.peso_colisao") },
+      lateralidade: { peso_desequilibrio: n("lateralidade.peso_desequilibrio") },
+      concentracao: { top_pct: n("concentracao.top_pct") },
+      orientacao:   { giros_max: n("orientacao.giros_max") },
+      pesos: {
+        exploracao:   n("pesos.exploracao"),
+        precisao:     n("pesos.precisao"),
+        lateralidade: n("pesos.lateralidade"),
+        concentracao: n("pesos.concentracao"),
+        orientacao:   n("pesos.orientacao"),
+      },
+      cor: { verde: n("cor.verde"), amarelo: n("cor.amarelo") },
+    };
+  }
+
+  btnSalvar.addEventListener("click", async () => {
+    btnSalvar.disabled = true;
+    try {
+      const ok = await editarQuadro(q.id, { parametros: coletar() });
+      q.parametros = ok.parametros;
+      showToast("Parâmetros salvos.");
+    } catch(e) {
+      showToast(e.message, false);
+    } finally {
+      btnSalvar.disabled = false;
+    }
+  });
+
+  btnReset.addEventListener("click", async () => {
+    btnReset.disabled = true;
+    try {
+      const ok = await editarQuadro(q.id, { parametros: null });
+      q.parametros = ok.parametros;
+      for (const grp of Object.keys(PARAMS_COMP_DEFAULT)) {
+        for (const key of Object.keys(PARAMS_COMP_DEFAULT[grp])) {
+          if (refs[`${grp}.${key}`]) refs[`${grp}.${key}`].value = String(PARAMS_COMP_DEFAULT[grp][key]);
+        }
+      }
+      showToast("Restaurado ao padrão.");
+    } catch(e) {
+      showToast(e.message, false);
+    } finally {
+      btnReset.disabled = false;
+    }
+  });
+
+  acoes.append(btnSalvar, btnReset);
+  body.append(acoes);
+  card.append(body);
+  return card;
+}
+
+const qComp = quadros.find(q => q.chave === "analise-comportamental");
+if (qComp) wrap.append(buildEditorParametros(qComp));
+
 display(html`<div>
   <div class="page-header">
     <h1>Gerenciar Quadros</h1>
